@@ -11,7 +11,7 @@ const context={Ledger:require('../app/src/main/assets/ledger.js'),Money:require(
  document:{querySelector(selector){const id=selector.slice(1);return elements[id]||null;},addEventListener(type,fn){(handlers[type]??=[]).push(fn);}},window:{}};
 vm.createContext(context);vm.runInContext(fs.readFileSync('app/src/main/assets/app.js','utf8'),context);vm.runInContext(fs.readFileSync('app/src/main/assets/ui.js','utf8'),context);
 assert.deepEqual(calls,[],'Launching a connected app with old data must not fetch anything');
-assert.match(elements.app.innerHTML,/Общий капитал/);
+assert.match(elements.app.innerHTML,/<span class="capital-label">Капитал<\/span>/);
 assert.doesNotMatch(elements.app.innerHTML,/Загрузить выписку|Баланс OKX|Курс ЦБ|fx-caption|data-action="import"/);
 vm.runInContext('refreshNative(); shiftMonth(-1); shiftMonth(1); actions.settings(); refreshNative();',context);
 assert.match(elements.sheetContent.innerHTML,/Курс ЦБ/);
