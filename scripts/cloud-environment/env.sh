@@ -1,0 +1,6 @@
+export JAVA_HOME="$HOME/.local/share/money-cloud/jdk-17.0.21+9"
+export ANDROID_HOME="$HOME/.local/share/money-cloud/android-sdk"
+export ANDROID_SDK_ROOT="$ANDROID_HOME"
+export GRADLE_USER_HOME="$HOME/.cache/money-cloud/gradle"
+export PATH="$HOME/.local/share/money-cloud/node-v22.23.4-linux-x64/bin:$JAVA_HOME/bin:$ANDROID_HOME/cmdline-tools/19.0/bin:$ANDROID_HOME/platform-tools:$PATH"
+export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:+$JAVA_TOOL_OPTIONS }-Djavax.net.ssl.trustStore=$HOME/.local/share/money-cloud/cacerts $(python3 -c 'import os,urllib.parse; p=urllib.parse.urlparse(os.environ.get("HTTPS_PROXY",os.environ.get("https_proxy",""))); print(" ".join("-D%s.proxyHost=%s -D%s.proxyPort=%s"%(s,p.hostname,s,p.port or 80) for s in ("http","https")) if p.hostname else "")')"

@@ -14,3 +14,5 @@ The user wants no permanent local app projects or APK collections on their PC. T
 - Old source archives remain in historical releases. The regular Git tree is the authoritative source for future work.
 
 Shared Android app/update instructions are in docs/ANDROID-APPS.md. Each other app needs its own repo, update manifest and original signing secret. Do not change Chains or other projects from this task.
+
+Cloud-only development setup, pinned tool bootstrap, cache locations, readiness checks and release procedure are in docs/CLOUD-DEVELOPMENT.md. Keep the prepared cloud checkout and caches for subsequent chats; the cleanup guidance above concerns personal computers. Source scripts/cloud-environment/env.sh in each cloud shell after setup.
