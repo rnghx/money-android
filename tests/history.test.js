@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict'),L=require('../app/src/main/assets/ledger.js');
+const t=new Date(2026,10,10,12).getTime();let stamp=t,value=100000,complete=true,stale=false;
+const M={portfolio:(b,a,c)=>({complete,stale,amount:c==='RUB'?value:1000,timestamp:stamp,sources:[{timestamp:stamp}]})};
+const state=L.init({transactions:[]});assert.ok(L.captureCapital(state,{}, {},M));assert.equal(state.capitalHistory.length,1);
+assert.equal(L.captureCapital(state,{}, {},M),false);value=200000;assert.equal(L.captureCapital(state,{}, {},M),false,'No rewrite from navigation or conversion alone');
+stamp+=1000;assert.ok(L.captureCapital(state,{}, {},M));assert.equal(state.capitalHistory.length,1);assert.equal(state.capitalHistory[0].RUB,200000);
+stamp+=86400000;value=180000;assert.ok(L.captureCapital(state,{}, {},M));assert.equal(state.capitalHistory.length,2);assert.equal(state.capitalHistory[0].RUB,200000);
+stamp+=86400000;complete=false;assert.equal(L.captureCapital(state,{}, {},M),false);complete=true;stale=true;assert.equal(L.captureCapital(state,{}, {},M),false);stale=false;assert.equal(L.captureCapital(state,{busy:true},{},M),false);
+state.transactions=[{id:'a',description:'Самокат',category:'Прочее',amount:10000,type:'expense',date:'2026-11-10'},{id:'b',description:'SAMOKAT',category:'Прочее',amount:20000,type:'expense',date:'2026-11-10'}];
+state.operationEdits={a:{categoryId:'other'},b:{categoryId:'other'}};state.merchantRules['Самокат']='food';
+assert.equal(L.groups(state,L.rows(state),'expense').length,1);assert.equal(L.groups(state,L.rows(state),'expense')[0].id,'food');assert.equal(L.groups(state,L.rows(state),'expense')[0].amount,30000);
+state.categories.find(c=>c.id==='food').name='Еда';assert.equal(L.groups(state,L.rows(state),'expense')[0].name,'Еда');
+state.splits.a={total:10000,parts:[{amount:6000,categoryId:'cafe',description:'Кофе'},{amount:4000,categoryId:'food',description:'Печенье'}]};assert.equal(L.groups(state,L.rows(state),'expense').find(c=>c.id==='cafe').amount,6000);
+console.log('History and analytics regression checks passed.');

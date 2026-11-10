@@ -1,0 +1,10 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:gravity="center_vertical" android:paddingLeft="12dp" android:paddingRight="12dp" android:paddingTop="4dp" android:paddingBottom="4dp" android:background="#000000">
+ <LinearLayout android:layout_width="match_parent" android:layout_height="40dp" android:orientation="horizontal" android:gravity="center_vertical">
+  <ImageButton android:id="@+id/widget_logo" android:layout_width="40dp" android:layout_height="40dp" android:src="@drawable/brand_mark" android:background="@android:color/transparent" android:padding="0dp" android:scaleType="fitCenter" android:contentDescription="@string/widget_toggle"/>
+  <TextView android:id="@+id/widget_capital" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:gravity="center_vertical|end" android:textColor="#FFFFFF" android:textSize="28sp" android:maxLines="1" android:autoSizeTextType="uniform" android:autoSizeMinTextSize="12sp" android:autoSizeMaxTextSize="30sp" android:autoSizeStepGranularity="1sp"/>
+ </LinearLayout>
+ <LinearLayout android:id="@+id/widget_goal_row" android:layout_width="match_parent" android:layout_height="20dp" android:orientation="horizontal" android:gravity="center_vertical">
+  <ProgressBar android:id="@+id/widget_progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="0dp" android:layout_weight="1" android:layout_height="3dp" android:progressTint="#FFFFFF" android:progressBackgroundTint="#292929" android:max="100"/>
+  <TextView android:id="@+id/widget_goal" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginLeft="10dp" android:textColor="#AAAAAA" android:textSize="12sp" android:maxLines="1"/>
+ </LinearLayout>
+</LinearLayout>

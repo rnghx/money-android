@@ -1,0 +1,22 @@
+package local.money;
+import org.json.*;
+import java.nio.file.*;
+import java.lang.reflect.*;
+public class SberCapitalTest {
+    static void check(boolean value){if(!value)throw new AssertionError();}
+    public static void main(String[] args)throws Exception {
+        Method method=DirectSber.class.getDeclaredMethod("capitalSnapshot",JSONObject.class);method.setAccessible(true);
+        JSONObject model=new JSONObject("{\"CTACCOUNTS\":{\"state\":\"SUCCESS\",\"errors\":[],\"data\":[{\"id\":\"credit\",\"state\":\"OPENED\",\"number\":\"123456\",\"balance\":{\"currency\":{\"code\":\"RUB\"},\"amount\":\"9000\"},\"availableTotalLimit\":{\"amount\":\"9000\"},\"creditLimit\":{\"amount\":\"10000\"},\"cards\":[{\"id\":\"card-one\"},{\"id\":\"card-two\"}]}]}}");
+        JSONObject result=(JSONObject)method.invoke(new DirectSber(),model);
+        check(result.getJSONArray("items").length()==1);
+        JSONObject account=result.getJSONArray("items").getJSONObject(0);
+        check(account.getString("amount").equals("-1000"));check(!account.toString().contains("123456"));
+        model.getJSONObject("CTACCOUNTS").put("state","ERROR");boolean failed=false;
+        try{method.invoke(new DirectSber(),model);}catch(InvocationTargetException expected){failed=expected.getCause() instanceof java.io.IOException;}check(failed);
+        JSONObject fixture=new JSONObject(Files.readString(Path.of("research/modern-fixtures_accounts.json")));
+        JSONObject captured=(JSONObject)method.invoke(new DirectSber(),fixture);captured.put("timestamp",1);
+        Files.createDirectories(Path.of(".test-classes"));Files.writeString(Path.of(".test-classes/capital-reference.json"),captured.toString());
+        check(captured.getJSONArray("items").length()>0);
+        System.out.println("Sber capital extraction checks passed: credit liability, one account for multiple cards, protected identifiers, incomplete groups rejected, reference DTO.");
+    }
+}

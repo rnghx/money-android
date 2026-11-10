@@ -1,0 +1,11 @@
+.gradle/
+**/build/
+local.properties
+*.jks
+*.keystore
+.test-classes/
+.env*
+output/
+release/
+*.apk
+*.part

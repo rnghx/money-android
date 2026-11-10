@@ -1,0 +1,7 @@
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false"><trust-anchors><certificates src="system"/></trust-anchors></base-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">online.sberbank.ru</domain>
+        <trust-anchors><certificates src="system"/><certificates src="@raw/russian_root"/></trust-anchors>
+    </domain-config>
+</network-security-config>
