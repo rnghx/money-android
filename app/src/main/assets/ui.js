@@ -13,7 +13,7 @@ Object.assign(paths,{
  home:'M3 11l9-8 9 8M5 10v11h14V10M10 21v-7h4v7',
  heart:'M12 21S2 15 2 8a5 5 0 0 1 10-3 5 5 0 0 1 10 3c0 7-10 13-10 13z',
  grid:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
- dots:'M5 12h.01M12 12h.01M19 12h.01',
+ dots:'M12 3l9 5v8l-9 5-9-5V8zM3 8l9 5 9-5M12 13v8',
  plane:'M3 11l7-1 6-7 2 1-3 7 6 4v2l-8-2-4 6H7l1-7-5-1z',
  gift:'M3 8h18v5H3zM5 13v8h14v-8M12 8v13M12 8H7a3 3 0 1 1 3-3zM12 8h5a3 3 0 1 0-3-3z',
  book:'M12 5v16M3 3c4 0 7 0 9 2 2-2 5-2 9-2v16c-4 0-7 0-9 2-2-2-5-2-9-2z',
