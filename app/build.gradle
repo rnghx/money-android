@@ -9,6 +9,16 @@ android {
         versionCode 13
         versionName '0.13.0'
     }
+    signingConfigs {
+        debug {
+            if (System.getenv('MONEY_KEYSTORE_PATH')) {
+                storeFile file(System.getenv('MONEY_KEYSTORE_PATH'))
+                storePassword 'android'
+                keyAlias 'AndroidDebugKey'
+                keyPassword 'android'
+            }
+        }
+    }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 

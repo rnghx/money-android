@@ -11,6 +11,7 @@ async function api(route,method='GET',data){const r=await fetch('https://api.git
  const previous=await(await fetch(manifestAsset.browser_download_url)).json();if(code<=previous.versionCode)throw Error('Increase versionCode and versionName before releasing');
  const apk='app/build/outputs/apk/debug/'+metadata.outputFile;
  const cert=cp.execFileSync(path.join(process.env.ANDROID_HOME,'build-tools/35.0.0/apksigner'),['verify','--print-certs',apk],{encoding:'utf8'});
+ console.log(cert);
  if(!cert.includes('ef73f2a3a7c10d308a73caee4423c2c1a3318ddc0775ba6a69a35d68ddb00b0a'))throw Error('Signing identity changed; refusing to release');
  fs.mkdirSync('release',{recursive:true});fs.copyFileSync(apk,'release/app.apk');
  cp.execFileSync('git',['archive','--format=zip','--output=release/source.zip','HEAD']);
