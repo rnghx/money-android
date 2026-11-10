@@ -22,6 +22,9 @@ jobs:
       - name: Validate business logic
         run: node --test tests/*.test.js
       - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-35 build-tools;35.0.0
+          log-accepted-android-sdk-licenses: 'false'
       - name: Restore original signing identity
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
