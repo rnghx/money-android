@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      MONEY_KEYSTORE_PATH: ${{ runner.temp }}/money-signing.keystore
+      MONEY_KEYSTORE_PATH: /tmp/money-signing.keystore
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
