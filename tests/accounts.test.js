@@ -25,3 +25,5 @@ const raw={uohId:'x',date:'10.11.2026T12:00:00',isFinancial:true,state:{category
 const converted=M.bankRows([raw]);assert.equal(converted[0].accountKey,'account-a');assert.equal(converted[1].accountKey,'account-b');
 assert.equal(M.portfolio({connected:true,capital},{},'RUB',{'account-a':{included:false},'account-b':{included:false}}).amount,0);
 console.log('Account selection: independent switches, saved restart, safe rollback, aliases, splits, totals, history and legacy data passed.');
+
+capital.items[0].previousKey='previous-card';saved=JSON.stringify({schema:1,transactions:[],accountPreferences:{'previous-card':{visible:false,included:false}}});({c,elements}=boot());assert.equal(vm.runInContext('state.accountPreferences["account-a"].included',c),false);assert.equal(vm.runInContext('state.accountPreferences["previous-card"].included',c),false);assert.doesNotMatch(elements.app.innerHTML,/Текущий/);

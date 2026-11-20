@@ -122,11 +122,38 @@ final class DirectSber {
             JSONObject products=catalogueResponse.getJSONObject("body").getJSONObject("sections").getJSONObject("technicalSection").getJSONObject("sectionProductData");
             mainModel=mergeCatalogue(mainModel,products);
         } catch(Exception e){catalogueFailed=true;}
+        enrichCardDetails(mainModel);
         capital=capitalSnapshot(mainModel);
         capital.put("catalogueFailed",catalogueFailed);
 
     }
     JSONObject capital(){return capital;}
+    private void enrichCardDetails(JSONObject model) {
+        JSONArray ids=new JSONArray();Map<String,JSONObject> cards=new HashMap<>();
+        for(Iterator<String> keys=model.keys();keys.hasNext();){String name=keys.next();if(!groupKey(name).equals("CARDSINWALLET"))continue;JSONObject group=model.optJSONObject(name);if(group==null||group.optJSONArray("data")==null)continue;
+            JSONArray data=group.getJSONArray("data");for(int i=0;i<data.length();i++){JSONObject card=data.optJSONObject(i);if(card!=null&&card.has("id")){String id=card.optString("id");if(!cards.containsKey(id)){cards.put(id,card);ids.put(id);}}}
+        }
+        if(ids.length()==0)return;
+        for(String id:cards.keySet())try {
+            JSONObject body=new JSONObject();body.put("cardIds",new JSONArray().put(id));
+            JSONObject response=new JSONObject(request("https://"+host+"/ufs-carddetail/rest/card/v1/cardInfo","application/json; charset=UTF-8",body.toString()).body);
+            JSONArray details=response.getJSONObject("body").getJSONObject("cardDetails").getJSONArray("cards");
+            if(details.length()==1){JSONObject detail=details.getJSONObject(0);if(!detail.has("id")||id.equals(detail.get("id").toString()))cards.get(id).put("_moneyDetails",detail);}
+        }catch(Exception e){/* Preserve products and unknown balances; never log a bank payload. */}
+    }
+
+    private JSONObject cardFunds(JSONObject raw) throws Exception {
+        JSONObject detail=raw.optJSONObject("_moneyDetails");if(detail==null||!detail.optString("cardAccount").matches("[0-9]{20}"))return null;
+        JSONObject limits=detail.optJSONObject("limits");JSONObject available=limits==null?null:limits.optJSONObject("availableLimit");if(available==null)available=raw.optJSONObject("availableLimit");if(available==null||available.optJSONObject("currency")==null)return null;
+        String type=detail.optString("type").toLowerCase(Locale.ROOT);java.math.BigDecimal amount=new java.math.BigDecimal(available.get("amount").toString().replace(',','.'));
+        String currency=available.getJSONObject("currency").getString("code");
+        if(type.equals("credit")){
+            JSONObject credit=detail.optJSONObject("creditType");JSONObject limit=credit==null?null:credit.optJSONObject("creditLimit");
+            if(limit==null||limit.optJSONObject("currency")==null||!currency.equals(limit.getJSONObject("currency").optString("code")))return null;
+            amount=amount.subtract(new java.math.BigDecimal(limit.get("amount").toString().replace(',','.')));
+        }else if(!type.equals("debit"))return null;
+        JSONObject result=new JSONObject();result.put("amount",amount.toPlainString());result.put("currency",currency);return result;
+    }
     private String groupKey(String name){return name.replace("_", "").toUpperCase(Locale.ROOT);}
     private JSONObject mergeCatalogue(JSONObject main,JSONObject products) throws Exception {
         JSONObject result=new JSONObject(main.toString());
@@ -182,12 +209,17 @@ final class DirectSber {
                 String id=raw.get("id").toString();if(accountKeys.containsKey(id))continue;
                 boolean investment=kind.contains("BROKER")||kind.contains("INVEST");
                 JSONObject balance=raw.optJSONObject("balance");String number=raw.optString("number","");
-                String key=number.matches("[0-9]{20}")?accountHash(number):"product:"+accountHash(kind+":"+id);
-                JSONObject item=new JSONObject();item.put("id",id);item.put("key",key);item.put("title",raw.optString("name",investment?"Брокерский счёт":"Платёжный счёт"));item.put("suffix",number.length()>=4?number.substring(number.length()-4):"");
+                String previousKey="product:"+accountHash(kind+":"+id);
+                JSONObject detail=raw.optJSONObject("_moneyDetails");if(kind.contains("CARDSINWALLET")&&detail!=null&&detail.optString("cardAccount").matches("[0-9]{20}"))number=detail.getString("cardAccount");
+                String key=number.matches("[0-9]{20}")?accountHash(number):previousKey;
+                JSONObject existing=null;for(int n=0;n<items.length();n++)if(key.equals(items.getJSONObject(n).optString("key"))){existing=items.getJSONObject(n);break;}
+                if(existing!=null){JSONArray aliases=existing.optJSONArray("previousKeys");if(aliases==null){aliases=new JSONArray();existing.put("previousKeys",aliases);}aliases.put(previousKey);accountKeys.put(id,key);continue;}
+                JSONObject item=new JSONObject();item.put("id",id);item.put("key",key);item.put("previousKey",previousKey);item.put("title",raw.optString("name",investment?"Брокерский счёт":"Платёжный счёт"));item.put("suffix",number.length()>=4?number.substring(number.length()-4):"");
+                JSONObject funds=kind.contains("CARDSINWALLET")?cardFunds(raw):null;
                 // A card available limit can include borrowed money: never count it as capital.
                 if(!investment&&"SUCCESS".equalsIgnoreCase(group.optString("state"))&&group.optJSONArray("errors")!=null&&group.getJSONArray("errors").length()==0&&balance!=null&&balance.optJSONObject("currency")!=null&&balance.has("amount")&&!kind.contains("CARDSINWALLET")){
                     item.put("amount",new java.math.BigDecimal(balance.get("amount").toString().replace(',','.')).toPlainString());item.put("currency",balance.getJSONObject("currency").getString("code"));
-                }else{item.put("amount",JSONObject.NULL);item.put("currency","RUB");}
+                }else if(funds!=null){item.put("amount",funds.getString("amount"));item.put("currency",funds.getString("currency"));}else{item.put("amount",JSONObject.NULL);item.put("currency","RUB");}
                 items.put(item);accountKeys.put(id,key);
             }
         }

@@ -126,7 +126,7 @@ function bankCapital(snapshot){
  for(const raw of snapshot.items){
   if(!raw||typeof raw.id!=='string'||typeof raw.key!=='string'||(raw.amount!==null&&decimalMinor(raw.amount)===null)||!/^[A-Z0-9]{3}$/.test(currency(raw.currency)))throw Error('Неизвестный остаток Сбера');
   const item={...raw,currency:currency(raw.currency)},same=ids.get(item.id)||keys.get(item.key);
-  if(same){if(same.currency!==item.currency||normalized(same.amount)!==normalized(item.amount))throw Error('Неоднозначный остаток Сбера');ids.set(item.id,same);keys.set(item.key,same);continue;}
+  if(same){if(same.currency!==item.currency||normalized(same.amount)!==normalized(item.amount))throw Error('Неоднозначный остаток Сбера');same.previousKeys=[...new Set([...(same.previousKeys||[]),...(item.previousKey?[item.previousKey]:[])])];ids.set(item.id,same);keys.set(item.key,same);continue;}
   ids.set(item.id,item);keys.set(item.key,item);items.push(item);
  }
  return {items,unsupported:Array.isArray(snapshot.unsupported)?snapshot.unsupported:[],timestamp:snapshot.timestamp};

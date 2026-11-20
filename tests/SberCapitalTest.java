@@ -28,6 +28,13 @@ public class SberCapitalTest {
         check(!complete.getJSONArray("diagnostics").toString().contains("4321"));
         full.getJSONObject("brokerAccounts").getJSONArray("data").getJSONObject(0).put("balance",new JSONObject("{\"amount\":\"100\",\"currency\":{\"code\":\"RUB\"}}"));
         JSONObject brokerCash=(JSONObject)method.invoke(client,full);check(brokerCash.getJSONArray("items").getJSONObject(1).isNull("amount"));
+        Method funds=DirectSber.class.getDeclaredMethod("cardFunds",JSONObject.class);funds.setAccessible(true);
+        JSONObject card=new JSONObject("{\"_moneyDetails\":{\"type\":\"debit\",\"cardAccount\":\"12345678901234564321\",\"limits\":{\"availableLimit\":{\"amount\":\"2500\",\"currency\":{\"code\":\"RUB\"}}}}}");
+        check(((JSONObject)funds.invoke(client,card)).getString("amount").equals("2500"));
+        card.getJSONObject("_moneyDetails").put("type","credit");check(funds.invoke(client,card)==null);
+        card.getJSONObject("_moneyDetails").put("creditType",new JSONObject("{\"creditLimit\":{\"amount\":\"3000\",\"currency\":{\"code\":\"RUB\"}}}"));
+        check(((JSONObject)funds.invoke(client,card)).getString("amount").equals("-500"));
+        card.getJSONObject("_moneyDetails").put("type","unknown");check(funds.invoke(client,card)==null);
         model.getJSONObject("CTACCOUNTS").put("state","ERROR");boolean failed=false;
         try{method.invoke(new DirectSber(),model);}catch(InvocationTargetException expected){failed=expected.getCause() instanceof java.io.IOException;}check(failed);
         JSONObject fixture=new JSONObject(Files.readString(Path.of("research/modern-fixtures_accounts.json")));
