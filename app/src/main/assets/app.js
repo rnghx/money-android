@@ -19,7 +19,7 @@ function refreshNative(){
  if(!native)return;try{bank=JSON.parse(Native.directStatus());bank.error=bank.error||conversionError;assets=JSON.parse(Native.assetsStatus());render();refreshSheet();
  }catch(e){showToast('Не удалось прочитать состояние Сбера');}
 }
-function refreshSheet(){if(!$('#sheet').open)return;if($('#connection'))connection();else if($('#sources'))sources();else if($('#okxSettings'))okxSettings();else if($('#bankAccounts'))bankAccounts();else if($('#bankSettings'))bankSettings();}
+function refreshSheet(){if(!$('#sheet').open)return;if($('#capitalHistoryPanel'))capitalHistory();else if($('#connection'))connection();else if($('#sources'))sources();else if($('#okxSettings'))okxSettings();else if($('#bankAccounts'))bankAccounts();else if($('#bankSettings'))bankSettings();}
 function assetsUpdate(result){assets=result;render();refreshSheet();}
 function shownMoney(value,from='RUB'){
  const converted=M.convertMinor(value,from,viewCurrency,assets.fx?.rubPerUsd);

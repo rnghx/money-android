@@ -22,3 +22,5 @@ header h1{display:flex;align-items:center;gap:9px}.brand{width:30px;height:30px;
 .account-options{padding:10px 0 18px;border-bottom:1px solid var(--line)}.account-toggle{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;font-size:14px}.account-toggle input{width:22px;height:22px;accent-color:#b5c99b;flex-shrink:0}.bank-accounts{padding-left:14px}.bank-accounts .title{font-size:14px}.account-title{overflow-wrap:anywhere}
 
 #bankSettings .small{font-size:12px;line-height:1.5}
+
+button.capital-value{display:block;width:100%;padding:0;text-align:left;min-height:48px}.capital-extremes{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:24px 0 30px}.capital-extremes span{display:block;font-size:12px;color:#888;margin-bottom:10px}.capital-extremes strong{font-size:19px;font-weight:400;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}#capitalHistoryPanel .capital-chart{margin:0;padding:10px 0 24px}
