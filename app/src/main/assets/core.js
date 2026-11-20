@@ -124,7 +124,7 @@ function bankCapital(snapshot){
  const items=[],ids=new Map(),keys=new Map();
  const normalized=value=>{const [whole,fraction='']=String(value).split('.');const f=fraction.replace(/0+$/,'');const out=whole.replace(/^(-?)0+(?=\d)/,'$1')+(f?'.'+f:'');return out==='-0'?'0':out;};
  for(const raw of snapshot.items){
-  if(!raw||typeof raw.id!=='string'||typeof raw.key!=='string'||decimalMinor(raw.amount)===null||!/^[A-Z0-9]{3}$/.test(currency(raw.currency)))throw Error('Неизвестный остаток Сбера');
+  if(!raw||typeof raw.id!=='string'||typeof raw.key!=='string'||(raw.amount!==null&&decimalMinor(raw.amount)===null)||!/^[A-Z0-9]{3}$/.test(currency(raw.currency)))throw Error('Неизвестный остаток Сбера');
   const item={...raw,currency:currency(raw.currency)},same=ids.get(item.id)||keys.get(item.key);
   if(same){if(same.currency!==item.currency||normalized(same.amount)!==normalized(item.amount))throw Error('Неоднозначный остаток Сбера');ids.set(item.id,same);keys.set(item.key,same);continue;}
   ids.set(item.id,item);keys.set(item.key,item);items.push(item);
@@ -135,7 +135,7 @@ function portfolio(bank,assets,to,preferences={}){
  const sources=[];
  if(bank.connected||bank.configured||bank.capital){
   let result={id:'sber',title:'Сбер',amount:null,complete:false,approx:false,timestamp:bank.capital?.timestamp||0,stale:!!bank.error,unpriced:0};
-  try{const snap=bankCapital(bank.capital);let sum=0,valued=0;result.complete=!snap.unsupported.length;for(const item of snap.items.filter(item=>preferences[item.key]?.included!==false)){const n=assetMinor(item.amount,item.currency,to,assets.fx);if(n===null){result.complete=false;result.unpriced++;continue;}sum+=n;valued++;result.approx=result.approx||item.currency!==to;}result.amount=Number.isSafeInteger(sum)&&(valued||(!snap.items.some(item=>preferences[item.key]?.included!==false)&&!snap.unsupported.length))?sum:null;}catch(e){result.error=e.message;}
+  try{const snap=bankCapital(bank.capital);let sum=0,valued=0;result.complete=!snap.unsupported.length;for(const item of snap.items.filter(item=>preferences[item.key]?.included!==false)){const n=item.amount===null?null:assetMinor(item.amount,item.currency,to,assets.fx);if(n===null){result.complete=false;result.unpriced++;continue;}sum+=n;valued++;result.approx=result.approx||item.currency!==to;}result.amount=Number.isSafeInteger(sum)&&(valued||(!snap.items.some(item=>preferences[item.key]?.included!==false)&&!snap.unsupported.length))?sum:null;}catch(e){result.error=e.message;}
   sources.push(result);
  }
  if(assets.okxConnected||assets.okx){const amount=assets.okx?assetMinor(assets.okx.usd,'USD',to,assets.fx):null;sources.push({id:'okx',title:'OKX',amount,complete:amount!==null,approx:to!=='USD',timestamp:assets.okx?.timestamp||0,stale:!!assets.okxError});}

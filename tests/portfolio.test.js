@@ -23,3 +23,6 @@ assert.equal(M.breakdown(rows,'income')[0].amount,800);
 assert.equal(M.bankCategory({classificationCode:5411},'expense'),'Продукты');
 assert.equal(M.bankCategory({correspondent:'Компания',description:'Зарплата'},'income'),'Зарплата');
 console.log('Portfolio checks passed: balances, aliases, debt, missing data, currencies, expense/income breakdown.');
+
+const unpriced={items:[{id:'broker',key:'broker',title:'Брокерский счёт',amount:null,currency:'RUB'}],unsupported:[],timestamp:1};
+assert.equal(M.bankCapital(unpriced).items.length,1);assert.equal(M.portfolio({connected:true,capital:unpriced},{},'RUB').amount,null);assert.equal(M.portfolio({connected:true,capital:unpriced},{},'RUB').complete,false);assert.equal(M.portfolio({connected:true,capital:unpriced},{},'RUB',{broker:{included:false}}).amount,0);

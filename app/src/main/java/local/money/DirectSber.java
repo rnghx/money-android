@@ -100,13 +100,13 @@ final class DirectSber {
         String contentType=reply.contentType==null?"":reply.contentType;
         java.util.regex.Matcher matcher=java.util.regex.Pattern.compile("boundary=(?:\"([^\"]+)\"|([^;\\s]+))",java.util.regex.Pattern.CASE_INSENSITIVE).matcher(contentType);
         if(!matcher.find())throw new IOException("Сбер изменил формат сессии");String boundary=matcher.group(1)!=null?matcher.group(1):matcher.group(2);
-        boolean main=false,uko=false;String[] parts=reply.body.split(java.util.regex.Pattern.quote("--"+boundary));
+        JSONObject mainModel=null;boolean main=false,uko=false;String[] parts=reply.body.split(java.util.regex.Pattern.quote("--"+boundary));
         if(parts.length<3||!parts[parts.length-1].trim().startsWith("--"))throw new IOException("Неполный ответ Сбера");
         for(int i=1;i<parts.length-1;i++){
             int split=parts[i].indexOf("\r\n\r\n");if(split<0)throw new IOException("Неполная сессия Сбера");
             String headers=parts[i].substring(0,split);JSONObject payload=new JSONObject(parts[i].substring(split+4).trim());if(!payload.optBoolean("success"))throw new IOException("Сбер не создал сессию");
             if(headers.matches("(?is).*X-UFS-SubsystemCode:\\s*MAIN_SCREEN\\s*.*")){
-                main=true;JSONObject model=payload.getJSONObject("body").getJSONObject("dataModel");capital=capitalSnapshot(model);
+                main=true;JSONObject model=payload.getJSONObject("body").getJSONObject("dataModel");mainModel=model;
                 for(Iterator<String> keys=model.keys();keys.hasNext();){JSONObject group=model.optJSONObject(keys.next());if(group==null)continue;JSONArray products=group.optJSONArray("data");if(products==null)continue;for(int p=0;p<products.length();p++){JSONObject product=products.optJSONObject(p);if(product!=null&&product.has("id"))owned.add(product.get("id").toString());}}
             }
             if(headers.matches("(?is).*X-UFS-SubsystemCode:\\s*SM_UKO\\s*.*"))uko=true;
@@ -114,12 +114,41 @@ final class DirectSber {
         if(!main||!uko)throw new IOException("Не все сервисы Сбера доступны");
         for(HttpCookie cookie:cookies.getCookieStore().getCookies())if(cookie.getName().equals("UFS-SESSION")&&!cookie.hasExpired())session=cookie.getValue();
         if(session==null||session.isEmpty())throw new IOException("Сбер не выдал сессию операций");
+        boolean catalogueFailed=false;
+        try {
+            // Public protocol reference: dukei/any-balance-providers, revision
+            // 62e9f76933c13e21cdcfa5acff3a976fedefa7a2, getProductsJsonApi.
+            JSONObject catalogueResponse=new JSONObject(request("https://"+host+"/main-screen/rest/v2/mobile/section/meta","application/json; charset=UTF-8","{\"withData\":true,\"forceUpdate\":false}").body);
+            JSONObject products=catalogueResponse.getJSONObject("body").getJSONObject("sections").getJSONObject("technicalSection").getJSONObject("sectionProductData");
+            mainModel=mergeCatalogue(mainModel,products);
+        } catch(Exception e){catalogueFailed=true;}
+        capital=capitalSnapshot(mainModel);
+        capital.put("catalogueFailed",catalogueFailed);
+
     }
     JSONObject capital(){return capital;}
+    private String groupKey(String name){return name.replace("_", "").toUpperCase(Locale.ROOT);}
+    private JSONObject mergeCatalogue(JSONObject main,JSONObject products) throws Exception {
+        JSONObject result=new JSONObject(main.toString());
+        for(Iterator<String> keys=products.keys();keys.hasNext();){
+            String name=keys.next(),canonical=groupKey(name);JSONObject incoming=products.optJSONObject(name);
+            if(incoming==null||incoming.optJSONArray("data")==null)continue;
+            String target=name;
+            for(Iterator<String> prior=result.keys();prior.hasNext();){String k=prior.next();if(groupKey(k).equals(canonical)){target=k;break;}}
+            JSONObject old=result.optJSONObject(target);JSONObject merged=new JSONObject(incoming.toString());
+            if(!merged.has("state"))merged.put("state","SUCCESS");if(!merged.has("errors"))merged.put("errors",new JSONArray());
+            if(old!=null&&old.optJSONArray("data")!=null&&"SUCCESS".equals(merged.optString("state"))){
+                LinkedHashMap<String,JSONObject> byId=new LinkedHashMap<>();
+                for(JSONArray list:new JSONArray[]{old.getJSONArray("data"),incoming.getJSONArray("data")})for(int i=0;i<list.length();i++){JSONObject item=list.getJSONObject(i);byId.put(item.get("id").toString(),item);}
+                merged.put("data",new JSONArray(byId.values()));
+            }
+            result.put(target,merged);
+        }return result;
+    }
     private JSONObject capitalSnapshot(JSONObject model) throws Exception {
         JSONArray items=new JSONArray(),unsupported=new JSONArray();accountKeys.clear();
         for(String groupName:new String[]{"ACCOUNTS","SHARINGACCOUNTS","CTACCOUNTS","SHARINGCTACCOUNTS","IMACCOUNTS","ACCOUNTS_IN_WALLET"}){
-            JSONObject group=model.optJSONObject(groupName);if(group==null)continue;
+            JSONObject group=model.optJSONObject(groupName);if(group==null)for(Iterator<String> keys=model.keys();keys.hasNext();){String name=keys.next();if(groupKey(name).equals(groupKey(groupName))){group=model.optJSONObject(name);break;}}if(group==null)continue;
             if(!"SUCCESS".equals(group.optString("state"))||group.optJSONArray("errors")==null||group.getJSONArray("errors").length()!=0)throw new IOException("Сбер не вернул все остатки счетов");
             JSONArray accounts=group.getJSONArray("data");
             for(int i=0;i<accounts.length();i++){
@@ -143,7 +172,26 @@ final class DirectSber {
             }
         }
         for(String name:new String[]{"DEPOSITS","LOANS","CREDITS"}){JSONObject block=model.optJSONObject(name);if(block!=null&&block.optJSONArray("data")!=null&&block.getJSONArray("data").length()>0)unsupported.put(name);}
-        JSONObject snapshot=new JSONObject();snapshot.put("items",items);snapshot.put("unsupported",unsupported);snapshot.put("timestamp",System.currentTimeMillis());return snapshot;
+        JSONArray diagnostics=new JSONArray();
+        for(Iterator<String> keys=model.keys();keys.hasNext();){
+            String name=keys.next();JSONObject group=model.optJSONObject(name);if(group==null||group.optJSONArray("data")==null)continue;
+            String kind=groupKey(name);JSONArray data=group.getJSONArray("data");JSONObject diagnostic=new JSONObject();diagnostic.put("group",name.replaceAll("[^A-Za-z0-9_]", "").substring(0,Math.min(64,name.replaceAll("[^A-Za-z0-9_]", "").length())));diagnostic.put("count",data.length());diagnostics.put(diagnostic);
+            if(!kind.matches(".*(BROKER|INVEST|PAYMENT|CURRENT|CARDSINWALLET).*"))continue;
+            for(int i=0;i<data.length();i++){
+                JSONObject raw=data.optJSONObject(i);if(raw==null||!raw.has("id")||"closed".equalsIgnoreCase(raw.optString("state")))continue;
+                String id=raw.get("id").toString();if(accountKeys.containsKey(id))continue;
+                boolean investment=kind.contains("BROKER")||kind.contains("INVEST");
+                JSONObject balance=raw.optJSONObject("balance");String number=raw.optString("number","");
+                String key=number.matches("[0-9]{20}")?accountHash(number):"product:"+accountHash(kind+":"+id);
+                JSONObject item=new JSONObject();item.put("id",id);item.put("key",key);item.put("title",raw.optString("name",investment?"Брокерский счёт":"Платёжный счёт"));item.put("suffix",number.length()>=4?number.substring(number.length()-4):"");
+                // A card available limit can include borrowed money: never count it as capital.
+                if("SUCCESS".equalsIgnoreCase(group.optString("state"))&&group.optJSONArray("errors")!=null&&group.getJSONArray("errors").length()==0&&balance!=null&&balance.optJSONObject("currency")!=null&&balance.has("amount")&&!kind.contains("CARDSINWALLET")){
+                    item.put("amount",new java.math.BigDecimal(balance.get("amount").toString().replace(',','.')).toPlainString());item.put("currency",balance.getJSONObject("currency").getString("code"));
+                }else{item.put("amount",JSONObject.NULL);item.put("currency","RUB");}
+                items.put(item);accountKeys.put(id,key);
+            }
+        }
+        JSONObject snapshot=new JSONObject();snapshot.put("diagnostics",diagnostics);snapshot.put("items",items);snapshot.put("unsupported",unsupported);snapshot.put("timestamp",System.currentTimeMillis());return snapshot;
     }
     private String accountHash(String number) throws Exception {byte[] bytes=java.security.MessageDigest.getInstance("SHA-256").digest(number.getBytes(StandardCharsets.UTF_8));StringBuilder s=new StringBuilder();for(byte b:bytes)s.append(String.format(Locale.ROOT,"%02x",b));return s.toString();}
     private String resourceKey(JSONObject resource) {

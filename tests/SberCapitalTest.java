@@ -20,6 +20,12 @@ public class SberCapitalTest {
         check(resource.invoke(client,new JSONObject("{\"id\":\"unknown\"}"))==null);
         DirectSber cardsClient=new DirectSber();JSONObject cardResult=(JSONObject)method.invoke(cardsClient,model);
         check(resource.invoke(cardsClient,new JSONObject("{\"id\":\"card:card-two\"}")).equals(cardResult.getJSONArray("items").getJSONObject(0).getString("key")));
+        Method merge=DirectSber.class.getDeclaredMethod("mergeCatalogue",JSONObject.class,JSONObject.class);merge.setAccessible(true);
+        JSONObject full=(JSONObject)merge.invoke(client,new JSONObject(),new JSONObject("{\"accounts\":{\"data\":[{\"id\":\"payment\",\"state\":\"OPENED\",\"number\":\"12345678901234564321\",\"name\":\"Платёжный\",\"balance\":{\"amount\":\"500\",\"currency\":{\"code\":\"RUB\"}}}]},\"brokerAccounts\":{\"data\":[{\"id\":\"broker\",\"name\":\"Брокерский счёт\"}]}}"));
+        JSONObject complete=(JSONObject)method.invoke(client,full);check(complete.getJSONArray("items").length()==2);
+        check(complete.getJSONArray("items").getJSONObject(0).getString("suffix").equals("4321"));
+        check(complete.getJSONArray("items").getJSONObject(1).isNull("amount"));
+        check(!complete.getJSONArray("diagnostics").toString().contains("4321"));
         model.getJSONObject("CTACCOUNTS").put("state","ERROR");boolean failed=false;
         try{method.invoke(new DirectSber(),model);}catch(InvocationTargetException expected){failed=expected.getCause() instanceof java.io.IOException;}check(failed);
         JSONObject fixture=new JSONObject(Files.readString(Path.of("research/modern-fixtures_accounts.json")));
