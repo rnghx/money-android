@@ -28,6 +28,12 @@ public class SberCapitalTest {
         check(!complete.getJSONArray("diagnostics").toString().contains("4321"));
         full.getJSONObject("brokerAccounts").getJSONArray("data").getJSONObject(0).put("balance",new JSONObject("{\"amount\":\"100\",\"currency\":{\"code\":\"RUB\"}}"));
         JSONObject brokerCash=(JSONObject)method.invoke(client,full);check(brokerCash.getJSONArray("items").getJSONObject(1).isNull("amount"));
+        JSONObject service=new JSONObject("{\"sberThanks\":{\"data\":[{\"balance\":123}]}}");
+        JSONObject harmless=(JSONObject)merge.invoke(client,service,service);check(harmless.getJSONObject("sberThanks").getJSONArray("data").length()==1);
+        JSONObject noIdentifiers=new JSONObject("{\"sberThanks\":{\"data\":[\"service\"]}}");check(merge.invoke(client,service,noIdentifiers)!=null);
+        Method failure=DirectSber.class.getDeclaredMethod("safeFailure",Exception.class);failure.setAccessible(true);
+        check(failure.invoke(client,new java.io.IOException("private payload must not escape")).equals("NETWORK"));
+        check(failure.invoke(client,new JSONException("private response")).equals("JSON_FORMAT"));
         Method funds=DirectSber.class.getDeclaredMethod("cardFunds",JSONObject.class);funds.setAccessible(true);
         JSONObject card=new JSONObject("{\"_moneyDetails\":{\"type\":\"debit\",\"cardAccount\":\"12345678901234564321\",\"limits\":{\"availableLimit\":{\"amount\":\"2500\",\"currency\":{\"code\":\"RUB\"}}}}}");
         check(((JSONObject)funds.invoke(client,card)).getString("amount").equals("2500"));

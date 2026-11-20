@@ -16,6 +16,8 @@ import java.util.*;
 
 final class DirectSber {
     static class RegistrationExpired extends IOException { RegistrationExpired(){super("Регистрация Сбера отозвана");} }
+    private static class HttpFailure extends IOException {final int status;HttpFailure(int status){super("Банк недоступен ("+status+")");this.status=status;}}
+    private String safeFailure(Exception e){if(e instanceof HttpFailure)return "HTTP_"+((HttpFailure)e).status;if(e instanceof java.net.SocketTimeoutException)return "TIMEOUT";if(e instanceof javax.net.ssl.SSLException)return "TLS";if(e instanceof JSONException)return "JSON_FORMAT";if(e instanceof IOException)return "NETWORK";return "FORMAT";}
     interface Confirm { String ask() throws Exception; }
     interface Persist { void save(JSONObject access) throws Exception; }
     static final String VERSION="17.13.0";
@@ -40,7 +42,7 @@ final class DirectSber {
             if(session!=null&&url.getPort()==8543)c.setRequestProperty("UCS_SESSION_ID",session);
             try(OutputStream out=c.getOutputStream()){out.write(body.getBytes(StandardCharsets.UTF_8));}
             int status=c.getResponseCode();cookies.put(url.toURI(),c.getHeaderFields());
-            if(status<200||status>=300)throw new IOException(status==401||status==403?"Банк отклонил вход. Повтори подключение.":"Банк недоступен ("+status+")");
+            if(status<200||status>=300)throw new HttpFailure(status);
             try(InputStream in=c.getInputStream();ByteArrayOutputStream buffer=new ByteArrayOutputStream()){
                 byte[] block=new byte[8192];int size;while((size=in.read(block))!=-1){buffer.write(block,0,size);if(buffer.size()>16*1024*1024)throw new IOException("Слишком большой ответ банка");}
                 return new Reply(buffer.toString("UTF-8"),c.getContentType());
@@ -114,17 +116,17 @@ final class DirectSber {
         if(!main||!uko)throw new IOException("Не все сервисы Сбера доступны");
         for(HttpCookie cookie:cookies.getCookieStore().getCookies())if(cookie.getName().equals("UFS-SESSION")&&!cookie.hasExpired())session=cookie.getValue();
         if(session==null||session.isEmpty())throw new IOException("Сбер не выдал сессию операций");
-        boolean catalogueFailed=false;
+        boolean catalogueFailed=false;String catalogueReason="",catalogueStage="REQUEST";
         try {
             // Public protocol reference: dukei/any-balance-providers, revision
             // 62e9f76933c13e21cdcfa5acff3a976fedefa7a2, getProductsJsonApi.
             JSONObject catalogueResponse=new JSONObject(request("https://"+host+"/main-screen/rest/v2/mobile/section/meta","application/json; charset=UTF-8","{\"withData\":true,\"forceUpdate\":false}").body);
-            JSONObject products=catalogueResponse.getJSONObject("body").getJSONObject("sections").getJSONObject("technicalSection").getJSONObject("sectionProductData");
-            mainModel=mergeCatalogue(mainModel,products);
-        } catch(Exception e){catalogueFailed=true;}
+            catalogueStage="STRUCTURE";JSONObject products=catalogueResponse.getJSONObject("body").getJSONObject("sections").getJSONObject("technicalSection").getJSONObject("sectionProductData");
+            catalogueStage="MERGE";mainModel=mergeCatalogue(mainModel,products);
+        } catch(Exception e){catalogueFailed=true;catalogueReason=catalogueStage+":"+safeFailure(e);}
         enrichCardDetails(mainModel);
         capital=capitalSnapshot(mainModel);
-        capital.put("catalogueFailed",catalogueFailed);
+        capital.put("catalogueFailed",catalogueFailed);capital.put("catalogueReason",catalogueReason);
 
     }
     JSONObject capital(){return capital;}
@@ -139,9 +141,18 @@ final class DirectSber {
             JSONObject response=new JSONObject(request("https://"+host+"/ufs-carddetail/rest/card/v1/cardInfo","application/json; charset=UTF-8",body.toString()).body);
             JSONArray details=response.getJSONObject("body").getJSONObject("cardDetails").getJSONArray("cards");
             if(details.length()==1){JSONObject detail=details.getJSONObject(0);if(!detail.has("id")||id.equals(detail.get("id").toString()))cards.get(id).put("_moneyDetails",detail);}
-        }catch(Exception e){/* Preserve products and unknown balances; never log a bank payload. */}
+        }catch(Exception e){try{cards.get(id).put("_moneyDetailStatus",safeFailure(e));}catch(JSONException ignored){}}
     }
 
+    private String cardBalanceReason(JSONObject raw){
+        if(raw.has("_moneyDetailStatus"))return raw.optString("_moneyDetailStatus");
+        JSONObject d=raw.optJSONObject("_moneyDetails");if(d==null)return "CARD_DETAILS_MISSING";
+        if(!d.optString("cardAccount").matches("[0-9]{20}"))return "CARD_ACCOUNT_MISSING";
+        String type=d.optString("type").toLowerCase(Locale.ROOT);if(!type.equals("debit")&&!type.equals("credit"))return "CARD_TYPE_UNKNOWN";
+        JSONObject limits=d.optJSONObject("limits"),a=limits==null?null:limits.optJSONObject("availableLimit");if(a==null)a=raw.optJSONObject("availableLimit");
+        if(a==null||!a.has("amount")||a.optJSONObject("currency")==null)return "CARD_BALANCE_MISSING";
+        return type.equals("credit")?"CREDIT_LIMIT_UNCONFIRMED":"BALANCE_FORMAT";
+    }
     private JSONObject cardFunds(JSONObject raw) throws Exception {
         JSONObject detail=raw.optJSONObject("_moneyDetails");if(detail==null||!detail.optString("cardAccount").matches("[0-9]{20}"))return null;
         JSONObject limits=detail.optJSONObject("limits");JSONObject available=limits==null?null:limits.optJSONObject("availableLimit");if(available==null)available=raw.optJSONObject("availableLimit");if(available==null||available.optJSONObject("currency")==null)return null;
@@ -155,6 +166,7 @@ final class DirectSber {
         JSONObject result=new JSONObject();result.put("amount",amount.toPlainString());result.put("currency",currency);return result;
     }
     private String groupKey(String name){return name.replace("_", "").toUpperCase(Locale.ROOT);}
+    private boolean allHaveIds(JSONArray rows){for(int i=0;i<rows.length();i++){JSONObject row=rows.optJSONObject(i);if(row==null||!row.has("id")||row.isNull("id"))return false;}return true;}
     private JSONObject mergeCatalogue(JSONObject main,JSONObject products) throws Exception {
         JSONObject result=new JSONObject(main.toString());
         for(Iterator<String> keys=products.keys();keys.hasNext();){
@@ -164,7 +176,7 @@ final class DirectSber {
             for(Iterator<String> prior=result.keys();prior.hasNext();){String k=prior.next();if(groupKey(k).equals(canonical)){target=k;break;}}
             JSONObject old=result.optJSONObject(target);JSONObject merged=new JSONObject(incoming.toString());
             if(!merged.has("state"))merged.put("state","SUCCESS");if(!merged.has("errors"))merged.put("errors",new JSONArray());
-            if(old!=null&&old.optJSONArray("data")!=null&&"SUCCESS".equals(merged.optString("state"))){
+            if(old!=null&&old.optJSONArray("data")!=null&&"SUCCESS".equals(merged.optString("state"))&&allHaveIds(old.getJSONArray("data"))&&allHaveIds(incoming.getJSONArray("data"))){
                 LinkedHashMap<String,JSONObject> byId=new LinkedHashMap<>();
                 for(JSONArray list:new JSONArray[]{old.getJSONArray("data"),incoming.getJSONArray("data")})for(int i=0;i<list.length();i++){JSONObject item=list.getJSONObject(i);byId.put(item.get("id").toString(),item);}
                 merged.put("data",new JSONArray(byId.values()));
@@ -219,7 +231,7 @@ final class DirectSber {
                 // A card available limit can include borrowed money: never count it as capital.
                 if(!investment&&"SUCCESS".equalsIgnoreCase(group.optString("state"))&&group.optJSONArray("errors")!=null&&group.getJSONArray("errors").length()==0&&balance!=null&&balance.optJSONObject("currency")!=null&&balance.has("amount")&&!kind.contains("CARDSINWALLET")){
                     item.put("amount",new java.math.BigDecimal(balance.get("amount").toString().replace(',','.')).toPlainString());item.put("currency",balance.getJSONObject("currency").getString("code"));
-                }else if(funds!=null){item.put("amount",funds.getString("amount"));item.put("currency",funds.getString("currency"));}else{item.put("amount",JSONObject.NULL);item.put("currency","RUB");}
+                }else if(funds!=null){item.put("amount",funds.getString("amount"));item.put("currency",funds.getString("currency"));}else{item.put("amount",JSONObject.NULL);item.put("currency","RUB");item.put("balanceReason",investment?"BROKER_UNSUPPORTED":kind.contains("CARDSINWALLET")?cardBalanceReason(raw):"BALANCE_UNAVAILABLE");}
                 items.put(item);accountKeys.put(id,key);
             }
         }
