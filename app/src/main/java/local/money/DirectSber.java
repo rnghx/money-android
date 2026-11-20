@@ -130,6 +130,12 @@ final class DirectSber {
 
     }
     JSONObject capital(){return capital;}
+    private JSONObject cardRequest(JSONObject card) throws JSONException {
+        // Preserve the bank's JSON scalar type; converting a numeric id to a
+        // string changes the cardInfo request contract.
+        Object id=card.get("id");if(id==JSONObject.NULL||(!(id instanceof Number)&&!(id instanceof String)))throw new JSONException("Invalid card id");
+        JSONObject body=new JSONObject();body.put("cardIds",new JSONArray().put(id));return body;
+    }
     private void enrichCardDetails(JSONObject model) {
         JSONArray ids=new JSONArray();Map<String,JSONObject> cards=new HashMap<>();
         for(Iterator<String> keys=model.keys();keys.hasNext();){String name=keys.next();if(!groupKey(name).equals("CARDSINWALLET"))continue;JSONObject group=model.optJSONObject(name);if(group==null||group.optJSONArray("data")==null)continue;
@@ -137,7 +143,7 @@ final class DirectSber {
         }
         if(ids.length()==0)return;
         for(String id:cards.keySet())try {
-            JSONObject body=new JSONObject();body.put("cardIds",new JSONArray().put(id));
+            JSONObject body=cardRequest(cards.get(id));
             JSONObject response=new JSONObject(request("https://"+host+"/ufs-carddetail/rest/card/v1/cardInfo","application/json; charset=UTF-8",body.toString()).body);
             JSONArray details=response.getJSONObject("body").getJSONObject("cardDetails").getJSONArray("cards");
             if(details.length()==1){JSONObject detail=details.getJSONObject(0);if(!detail.has("id")||id.equals(detail.get("id").toString()))cards.get(id).put("_moneyDetails",detail);}

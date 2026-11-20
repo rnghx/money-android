@@ -34,6 +34,12 @@ public class SberCapitalTest {
         Method failure=DirectSber.class.getDeclaredMethod("safeFailure",Exception.class);failure.setAccessible(true);
         check(failure.invoke(client,new java.io.IOException("private payload must not escape")).equals("NETWORK"));
         check(failure.invoke(client,new JSONException("private response")).equals("JSON_FORMAT"));
+        Method request=DirectSber.class.getDeclaredMethod("cardRequest",JSONObject.class);request.setAccessible(true);
+        JSONObject numericRequest=(JSONObject)request.invoke(client,new JSONObject("{\"id\":9007199254740993}"));
+        Object numericId=new JSONObject(numericRequest.toString()).getJSONArray("cardIds").get(0);
+        check(numericId instanceof Number);check(numericId.toString().equals("9007199254740993"));
+        JSONObject stringRequest=(JSONObject)request.invoke(client,new JSONObject("{\"id\":\"00123\"}"));check(stringRequest.getJSONArray("cardIds").get(0) instanceof String);check(stringRequest.getJSONArray("cardIds").getString(0).equals("00123"));
+        boolean rejected=false;try{request.invoke(client,new JSONObject("{\"id\":null}"));}catch(InvocationTargetException expected){rejected=expected.getCause() instanceof JSONException;}check(rejected);
         Method funds=DirectSber.class.getDeclaredMethod("cardFunds",JSONObject.class);funds.setAccessible(true);
         JSONObject card=new JSONObject("{\"_moneyDetails\":{\"type\":\"debit\",\"cardAccount\":\"12345678901234564321\",\"limits\":{\"availableLimit\":{\"amount\":\"2500\",\"currency\":{\"code\":\"RUB\"}}}}}");
         check(((JSONObject)funds.invoke(client,card)).getString("amount").equals("2500"));
