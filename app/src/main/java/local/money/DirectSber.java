@@ -226,13 +226,13 @@ final class DirectSber {
                 JSONObject raw=data.optJSONObject(i);if(raw==null||!raw.has("id")||"closed".equalsIgnoreCase(raw.optString("state")))continue;
                 String id=raw.get("id").toString();if(accountKeys.containsKey(id))continue;
                 boolean investment=kind.contains("BROKER")||kind.contains("INVEST");
-                JSONObject balance=raw.optJSONObject("balance");String number=raw.optString("number","");
+                JSONObject balance=raw.optJSONObject("balance");String number=raw.optString("number","");String displayNumber=number;
                 String previousKey="product:"+accountHash(kind+":"+id);
                 JSONObject detail=raw.optJSONObject("_moneyDetails");if(kind.contains("CARDSINWALLET")&&detail!=null&&detail.optString("cardAccount").matches("[0-9]{20}"))number=detail.getString("cardAccount");
                 String key=number.matches("[0-9]{20}")?accountHash(number):previousKey;
                 JSONObject existing=null;for(int n=0;n<items.length();n++)if(key.equals(items.getJSONObject(n).optString("key"))){existing=items.getJSONObject(n);break;}
                 if(existing!=null){JSONArray aliases=existing.optJSONArray("previousKeys");if(aliases==null){aliases=new JSONArray();existing.put("previousKeys",aliases);}aliases.put(previousKey);accountKeys.put(id,key);continue;}
-                JSONObject item=new JSONObject();item.put("id",id);item.put("key",key);item.put("previousKey",previousKey);item.put("title",raw.optString("name",investment?"Брокерский счёт":"Платёжный счёт"));item.put("suffix",number.length()>=4?number.substring(number.length()-4):"");
+                JSONObject item=new JSONObject();item.put("id",id);item.put("key",key);item.put("previousKey",previousKey);item.put("title",raw.optString("name",investment?"Брокерский счёт":"Платёжный счёт"));String shownNumber=displayNumber.isEmpty()?number:displayNumber;item.put("suffix",shownNumber.length()>=4?shownNumber.substring(shownNumber.length()-4):"");
                 JSONObject funds=kind.contains("CARDSINWALLET")?cardFunds(raw):null;
                 // A card available limit can include borrowed money: never count it as capital.
                 if(!investment&&"SUCCESS".equalsIgnoreCase(group.optString("state"))&&group.optJSONArray("errors")!=null&&group.getJSONArray("errors").length()==0&&balance!=null&&balance.optJSONObject("currency")!=null&&balance.has("amount")&&!kind.contains("CARDSINWALLET")){
