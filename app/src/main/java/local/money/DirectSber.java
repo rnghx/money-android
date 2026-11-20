@@ -185,7 +185,7 @@ final class DirectSber {
                 String key=number.matches("[0-9]{20}")?accountHash(number):"product:"+accountHash(kind+":"+id);
                 JSONObject item=new JSONObject();item.put("id",id);item.put("key",key);item.put("title",raw.optString("name",investment?"Брокерский счёт":"Платёжный счёт"));item.put("suffix",number.length()>=4?number.substring(number.length()-4):"");
                 // A card available limit can include borrowed money: never count it as capital.
-                if("SUCCESS".equalsIgnoreCase(group.optString("state"))&&group.optJSONArray("errors")!=null&&group.getJSONArray("errors").length()==0&&balance!=null&&balance.optJSONObject("currency")!=null&&balance.has("amount")&&!kind.contains("CARDSINWALLET")){
+                if(!investment&&"SUCCESS".equalsIgnoreCase(group.optString("state"))&&group.optJSONArray("errors")!=null&&group.getJSONArray("errors").length()==0&&balance!=null&&balance.optJSONObject("currency")!=null&&balance.has("amount")&&!kind.contains("CARDSINWALLET")){
                     item.put("amount",new java.math.BigDecimal(balance.get("amount").toString().replace(',','.')).toPlainString());item.put("currency",balance.getJSONObject("currency").getString("code"));
                 }else{item.put("amount",JSONObject.NULL);item.put("currency","RUB");}
                 items.put(item);accountKeys.put(id,key);

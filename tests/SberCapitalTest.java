@@ -26,6 +26,8 @@ public class SberCapitalTest {
         check(complete.getJSONArray("items").getJSONObject(0).getString("suffix").equals("4321"));
         check(complete.getJSONArray("items").getJSONObject(1).isNull("amount"));
         check(!complete.getJSONArray("diagnostics").toString().contains("4321"));
+        full.getJSONObject("brokerAccounts").getJSONArray("data").getJSONObject(0).put("balance",new JSONObject("{\"amount\":\"100\",\"currency\":{\"code\":\"RUB\"}}"));
+        JSONObject brokerCash=(JSONObject)method.invoke(client,full);check(brokerCash.getJSONArray("items").getJSONObject(1).isNull("amount"));
         model.getJSONObject("CTACCOUNTS").put("state","ERROR");boolean failed=false;
         try{method.invoke(new DirectSber(),model);}catch(InvocationTargetException expected){failed=expected.getCause() instanceof java.io.IOException;}check(failed);
         JSONObject fixture=new JSONObject(Files.readString(Path.of("research/modern-fixtures_accounts.json")));
