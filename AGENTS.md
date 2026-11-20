@@ -16,3 +16,6 @@ The user wants no permanent local app projects or APK collections on their PC. T
 Shared Android app/update instructions are in docs/ANDROID-APPS.md. Each other app needs its own repo, update manifest and original signing secret. Do not change Chains or other projects from this task.
 
 Cloud-only development setup, pinned tool bootstrap, cache locations, readiness checks and release procedure are in docs/CLOUD-DEVELOPMENT.md. Keep the prepared cloud checkout and caches for subsequent chats; the cleanup guidance above concerns personal computers. Source scripts/cloud-environment/env.sh in each cloud shell after setup.
+
+Cloud activation: call cloud_environment.environment_status and use wait_for_environment for a starting machine before asking the user to intervene. Wait through provisioning; only report a confirmed startup failure.
+User preference: deliver completed application changes through the existing Actions release workflow so the user can use Settings → Обновить приложение. Batch related changes into one release.
