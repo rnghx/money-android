@@ -131,7 +131,7 @@ final class DirectSber {
     private void enrichCardDetails(JSONObject model) {
         JSONArray ids=new JSONArray();Map<String,JSONObject> cards=new HashMap<>();
         for(Iterator<String> keys=model.keys();keys.hasNext();){String name=keys.next();if(!groupKey(name).equals("CARDSINWALLET"))continue;JSONObject group=model.optJSONObject(name);if(group==null||group.optJSONArray("data")==null)continue;
-            JSONArray data=group.getJSONArray("data");for(int i=0;i<data.length();i++){JSONObject card=data.optJSONObject(i);if(card!=null&&card.has("id")){String id=card.optString("id");if(!cards.containsKey(id)){cards.put(id,card);ids.put(id);}}}
+            JSONArray data=group.optJSONArray("data");for(int i=0;i<data.length();i++){JSONObject card=data.optJSONObject(i);if(card!=null&&card.has("id")){String id=card.optString("id");if(!cards.containsKey(id)){cards.put(id,card);ids.put(id);}}}
         }
         if(ids.length()==0)return;
         for(String id:cards.keySet())try {
