@@ -6,10 +6,10 @@ let saved=JSON.stringify({schema:1,transactions:[expense('one','account-a'),expe
 let failSave=false;const calls=[];
 function boot(){const elements={app:{},sheetContent:{},toast:{style:{}},sheet:{open:false,showModal(){this.open=true;},close(){this.open=false;},addEventListener(){}}};const handlers={};const c={Money:M,Ledger:L,console,setTimeout(){},Native:{load:()=>saved,save:s=>{if(failSave)return false;saved=s;return true;},directStatus:()=>JSON.stringify({connected:true,capital}),assetsStatus:()=>JSON.stringify({}),saveWidget(){},syncBank:()=>calls.push('sync')},document:{querySelector:s=>elements[s.slice(1)]||null,addEventListener:(t,f)=>(handlers[t]??=[]).push(f)},window:{}};vm.createContext(c);for(const f of ['app','ui'])vm.runInContext(fs.readFileSync('app/src/main/assets/'+f+'.js','utf8'),c);return {c,elements,handlers};}
 let {c,elements,handlers}=boot();
-assert.match(elements.app.innerHTML,/Текущий/);assert.match(elements.app.innerHTML,/Карта/);assert.doesNotMatch(elements.app.innerHTML,/Дубль/);
-vm.runInContext('actions.bankSettings()',c);assert.equal((elements.sheetContent.innerHTML.match(/data-account-field=/g)||[]).length,4);
+assert.doesNotMatch(elements.app.innerHTML,/Текущий|Карта|bank-accounts/);assert.match(elements.app.innerHTML,/data-action="bankAccounts"/);vm.runInContext('actions.bankAccounts()',c);assert.match(elements.sheetContent.innerHTML,/Текущий/);assert.match(elements.sheetContent.innerHTML,/Карта/);assert.doesNotMatch(elements.sheetContent.innerHTML,/Дубль/);
+vm.runInContext('actions.bankSettings()',c);assert.doesNotMatch(elements.sheetContent.innerHTML,/Показывать на главной/);assert.match(elements.sheetContent.innerHTML,/Показывать в источнике/);assert.equal((elements.sheetContent.innerHTML.match(/data-account-field=/g)||[]).length,4);
 handlers.change[0]({target:{dataset:{accountKey:'account-a',accountField:'visible'},checked:false}});
-assert.doesNotMatch(elements.app.innerHTML,/Текущий/);assert.equal(vm.runInContext("M.portfolio(bank,assets,'RUB',state.accountPreferences).amount",c),30000,'Visibility does not change totals');
+vm.runInContext('actions.bankAccounts()',c);assert.doesNotMatch(elements.sheetContent.innerHTML,/Текущий/);assert.match(elements.sheetContent.innerHTML,/Карта/);assert.equal(vm.runInContext("M.portfolio(bank,assets,'RUB',state.accountPreferences).amount",c),30000,'Visibility does not change totals');
 vm.runInContext("setAccountPreference('account-b','included',false)",c);
 assert.equal(vm.runInContext("M.portfolio(bank,assets,'RUB',state.accountPreferences).amount",c),10000);
 assert.equal(vm.runInContext("L.groups(state,L.rows(state),'expense').reduce((s,g)=>s+g.amount,0)",c),200,'Split parts excluded; unknown legacy account retained');
