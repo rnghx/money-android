@@ -86,9 +86,9 @@ function bankRows(records){
   const fee=raw.commission?money(raw.commission):0;if(fee<0)throw Error('Неизвестная комиссия Сбера');
   const own=raw.ownTransfer===true||['UfsTransferSelf','UfsDepositOpen','UfsDepositClose'].includes(raw.form)||/перевод себе|между своими|на свой сч[её]т/i.test(raw.description||'');
   const text=String(raw.correspondent||raw.description||'Операция Сбера').replace(/\s+/g,' ').trim().slice(0,240);
-  const common={date:d,timestamp:Date.parse(`${d}T${parsedDate[4]}+03:00`),description:text,source:'bank',review:false,hold:raw.state.name==='AUTHORIZATION'};
+  const common={date:d,timestamp:Date.parse(`${d}T${parsedDate[4]}+03:00`),description:text,source:'bank',accountKey:typeof raw.accountKey==='string'?raw.accountKey:null,review:false,hold:raw.state.name==='AUTHORIZATION'};
   if(signed) {const type=own?'transfer':signed<0?'expense':'income';out.push({...common,id:'bank:'+raw.uohId,amount:Math.abs(signed),type,category:bankCategory(raw,type)});}
-  if(fee)out.push({...common,id:'bank:'+raw.uohId+':fee',amount:fee,type:'expense',description:'Комиссия · '+text,category:'Прочее'});
+  if(fee)out.push({...common,id:'bank:'+raw.uohId+':fee',accountKey:raw.feeAccountKey||common.accountKey,amount:fee,type:'expense',description:'Комиссия · '+text,category:'Прочее'});
  }
  return out;
 }
@@ -131,11 +131,11 @@ function bankCapital(snapshot){
  }
  return {items,unsupported:Array.isArray(snapshot.unsupported)?snapshot.unsupported:[],timestamp:snapshot.timestamp};
 }
-function portfolio(bank,assets,to){
+function portfolio(bank,assets,to,preferences={}){
  const sources=[];
  if(bank.connected||bank.configured||bank.capital){
   let result={id:'sber',title:'Сбер',amount:null,complete:false,approx:false,timestamp:bank.capital?.timestamp||0,stale:!!bank.error,unpriced:0};
-  try{const snap=bankCapital(bank.capital);let sum=0,valued=0;result.complete=!snap.unsupported.length;for(const item of snap.items){const n=assetMinor(item.amount,item.currency,to,assets.fx);if(n===null){result.complete=false;result.unpriced++;continue;}sum+=n;valued++;result.approx=result.approx||item.currency!==to;}result.amount=Number.isSafeInteger(sum)&&(valued||(!snap.items.length&&!snap.unsupported.length))?sum:null;}catch(e){result.error=e.message;}
+  try{const snap=bankCapital(bank.capital);let sum=0,valued=0;result.complete=!snap.unsupported.length;for(const item of snap.items.filter(item=>preferences[item.key]?.included!==false)){const n=assetMinor(item.amount,item.currency,to,assets.fx);if(n===null){result.complete=false;result.unpriced++;continue;}sum+=n;valued++;result.approx=result.approx||item.currency!==to;}result.amount=Number.isSafeInteger(sum)&&(valued||(!snap.items.some(item=>preferences[item.key]?.included!==false)&&!snap.unsupported.length))?sum:null;}catch(e){result.error=e.message;}
   sources.push(result);
  }
  if(assets.okxConnected||assets.okx){const amount=assets.okx?assetMinor(assets.okx.usd,'USD',to,assets.fx):null;sources.push({id:'okx',title:'OKX',amount,complete:amount!==null,approx:to!=='USD',timestamp:assets.okx?.timestamp||0,stale:!!assets.okxError});}

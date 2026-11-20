@@ -23,6 +23,7 @@ final class DirectSber {
     private String host,session;
     private final Set<String> owned=new HashSet<>();
     private JSONObject capital;
+    private final Map<String,String> accountKeys=new HashMap<>();
     private record Reply(String body,String contentType) {}
     static boolean allowed(URL url) {
         return url.getProtocol().equals("https") && url.getUserInfo()==null &&
@@ -116,7 +117,7 @@ final class DirectSber {
     }
     JSONObject capital(){return capital;}
     private JSONObject capitalSnapshot(JSONObject model) throws Exception {
-        JSONArray items=new JSONArray(),unsupported=new JSONArray();
+        JSONArray items=new JSONArray(),unsupported=new JSONArray();accountKeys.clear();
         for(String groupName:new String[]{"ACCOUNTS","SHARINGACCOUNTS","CTACCOUNTS","SHARINGCTACCOUNTS","IMACCOUNTS","ACCOUNTS_IN_WALLET"}){
             JSONObject group=model.optJSONObject(groupName);if(group==null)continue;
             if(!"SUCCESS".equals(group.optString("state"))||group.optJSONArray("errors")==null||group.getJSONArray("errors").length()!=0)throw new IOException("Сбер не вернул все остатки счетов");
@@ -124,14 +125,13 @@ final class DirectSber {
             for(int i=0;i<accounts.length();i++){
                 JSONObject raw=accounts.getJSONObject(i);String state=raw.getString("state").toLowerCase(Locale.ROOT);
                 if(state.equals("closed"))continue;if(!state.equals("opened")&&!state.equals("active"))throw new IOException("Неизвестное состояние счёта Сбера");
-                if(raw.has("accountType")&&!raw.optString("accountType").equals("AccumulativeAccount")){unsupported.put(groupName);continue;}
                 JSONObject balance=raw.getJSONObject("balance");String currency=balance.getJSONObject("currency").getString("code");
                 java.math.BigDecimal amount;
                 if(groupName.contains("CTACCOUNT")&&raw.optJSONObject("availableTotalLimit")!=null)amount=new java.math.BigDecimal(raw.getJSONObject("availableTotalLimit").get("amount").toString().replace(',','.')).subtract(new java.math.BigDecimal(raw.getJSONObject("creditLimit").get("amount").toString().replace(',','.')));
                 else amount=new java.math.BigDecimal((raw.optJSONObject("availCash")!=null?raw.getJSONObject("availCash"):balance).get("amount").toString().replace(',','.'));
                 String id=raw.get("id").toString(),number=raw.optString("number","");
-                JSONObject item=new JSONObject();item.put("id",id);item.put("key",number.isEmpty()?"id:"+id:accountHash(number));item.put("currency",currency);item.put("amount",amount.toPlainString());item.put("title",raw.optString("name","Счёт"));items.put(item);
-                JSONArray cards=raw.optJSONArray("cards");if(cards!=null)for(int n=0;n<cards.length();n++){JSONObject card=cards.optJSONObject(n);if(card!=null&&card.has("id"))owned.add(card.get("id").toString());}
+                JSONObject item=new JSONObject();item.put("id",id);item.put("key",number.isEmpty()?"id:"+id:accountHash(number));item.put("currency",currency);item.put("amount",amount.toPlainString());item.put("title",raw.optString("name","Счёт"));item.put("suffix",number.length()>=4?number.substring(number.length()-4):"");accountKeys.put(id,item.getString("key"));items.put(item);
+                JSONArray cards=raw.optJSONArray("cards");if(cards!=null)for(int n=0;n<cards.length();n++){JSONObject card=cards.optJSONObject(n);if(card!=null&&card.has("id")){String cardId=card.get("id").toString();owned.add(cardId);accountKeys.put(cardId,item.getString("key"));}}
             }
         }
         JSONObject digital=model.optJSONObject("DIGITALRUBLE");if(digital!=null){
@@ -139,13 +139,18 @@ final class DirectSber {
             JSONArray wallets=digital.getJSONArray("data");for(int i=0;i<wallets.length();i++){
                 JSONObject raw=wallets.getJSONObject(i);if(!"ACTIVE".equals(raw.getJSONObject("walletStatus").optString("code")))continue;
                 JSONObject b=raw.getJSONObject("balance");java.math.BigDecimal amount=new java.math.BigDecimal(b.get("totalAmount").toString()).subtract(new java.math.BigDecimal(b.get("totalBlockedAmount").toString()));
-                String key="digital:"+accountHash(raw.getString("digitalRubleAccountNumber"));JSONObject item=new JSONObject();item.put("id",key);item.put("key",key);item.put("currency","RUB");item.put("amount",amount.toPlainString());item.put("title","Цифровой рубль");items.put(item);
+                String key="digital:"+accountHash(raw.getString("digitalRubleAccountNumber"));JSONObject item=new JSONObject();item.put("id",key);item.put("key",key);item.put("currency","RUB");item.put("amount",amount.toPlainString());item.put("title","Цифровой рубль");items.put(item);accountKeys.put(raw.get("id").toString(),key);
             }
         }
         for(String name:new String[]{"DEPOSITS","LOANS","CREDITS"}){JSONObject block=model.optJSONObject(name);if(block!=null&&block.optJSONArray("data")!=null&&block.getJSONArray("data").length()>0)unsupported.put(name);}
         JSONObject snapshot=new JSONObject();snapshot.put("items",items);snapshot.put("unsupported",unsupported);snapshot.put("timestamp",System.currentTimeMillis());return snapshot;
     }
     private String accountHash(String number) throws Exception {byte[] bytes=java.security.MessageDigest.getInstance("SHA-256").digest(number.getBytes(StandardCharsets.UTF_8));StringBuilder s=new StringBuilder();for(byte b:bytes)s.append(String.format(Locale.ROOT,"%02x",b));return s.toString();}
+    private String resourceKey(JSONObject resource) {
+        if(resource==null)return null;
+        String id=resource.optString("id");String key=accountKeys.get(id);
+        return key!=null?key:accountKeys.get(id.replaceFirst("^[^:]+:",""));
+    }
     JSONArray history(String month) throws Exception { return history(month,1); }
     JSONArray history(String month,int months) throws Exception {
         if(months<1||months>12)throw new IllegalArgumentException("months");
@@ -163,6 +168,14 @@ final class DirectSber {
                 JSONObject row=new JSONObject();for(String key:new String[]{"uohId","date","form","state","description","correspondent","operationAmount","nationalAmount","commission","isFinancial","isHidden","classificationCode"})if(raw.has(key))row.put(key,raw.get(key));
                 JSONObject source=raw.optJSONObject("fromResource"),destination=raw.optJSONObject("toResource");
                 if(source!=null&&destination!=null){String fromId=source.optString("id").replaceFirst("^[^:]+:",""),toId=destination.optString("id").replaceFirst("^[^:]+:","");row.put("ownTransfer",!fromId.equals(toId)&&owned.contains(fromId)&&owned.contains(toId));}
+                String fromKey=resourceKey(source),toKey=resourceKey(destination);
+                JSONObject operationAmount=raw.optJSONObject("operationAmount");
+                if(operationAmount!=null){
+                    java.math.BigDecimal signed=new java.math.BigDecimal(operationAmount.get("amount").toString().replace(',','.'));
+                    String key=signed.signum()<0?fromKey:toKey;
+                    if(key!=null)row.put("accountKey",key);
+                }
+                if(fromKey!=null)row.put("feeAccountKey",fromKey);
                 result.put(row);
             }
         }throw new IOException("История не закончилась. Выбери меньший период.");

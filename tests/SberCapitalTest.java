@@ -11,6 +11,15 @@ public class SberCapitalTest {
         check(result.getJSONArray("items").length()==1);
         JSONObject account=result.getJSONArray("items").getJSONObject(0);
         check(account.getString("amount").equals("-1000"));check(!account.toString().contains("123456"));
+        JSONObject ordinary=new JSONObject("{\"ACCOUNTS\":{\"state\":\"SUCCESS\",\"errors\":[],\"data\":[{\"id\":\"current\",\"state\":\"OPENED\",\"accountType\":\"CurrentAccount\",\"number\":\"987654321\",\"balance\":{\"currency\":{\"code\":\"RUB\"},\"amount\":\"1234.50\"}}]}}");
+        DirectSber client=new DirectSber();JSONObject current=(JSONObject)method.invoke(client,ordinary);
+        check(current.getJSONArray("items").length()==1);check(current.getJSONArray("unsupported").length()==0);
+        JSONObject entry=current.getJSONArray("items").getJSONObject(0);check(entry.getString("amount").equals("1234.50"));check(entry.getString("suffix").equals("4321"));check(!entry.toString().contains("987654321"));
+        Method resource=DirectSber.class.getDeclaredMethod("resourceKey",JSONObject.class);resource.setAccessible(true);
+        check(resource.invoke(client,new JSONObject("{\"id\":\"account:current\"}")).equals(entry.getString("key")));
+        check(resource.invoke(client,new JSONObject("{\"id\":\"unknown\"}"))==null);
+        DirectSber cardsClient=new DirectSber();JSONObject cardResult=(JSONObject)method.invoke(cardsClient,model);
+        check(resource.invoke(cardsClient,new JSONObject("{\"id\":\"card:card-two\"}")).equals(cardResult.getJSONArray("items").getJSONObject(0).getString("key")));
         model.getJSONObject("CTACCOUNTS").put("state","ERROR");boolean failed=false;
         try{method.invoke(new DirectSber(),model);}catch(InvocationTargetException expected){failed=expected.getCause() instanceof java.io.IOException;}check(failed);
         JSONObject fixture=new JSONObject(Files.readString(Path.of("research/modern-fixtures_accounts.json")));

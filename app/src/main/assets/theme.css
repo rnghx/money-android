@@ -18,3 +18,7 @@ header h1{display:flex;align-items:center;gap:9px}.brand{width:30px;height:30px;
 .period{justify-content:center;gap:3px}.period span{min-width:100px;text-align:center}.period .icon{width:40px;min-width:40px}.capital-chart{margin:0 0 25px}.capital-chart>svg{display:block;width:100%;height:auto;stroke:none;overflow:visible}.capital-chart text{fill:#777;font-family:Arial,sans-serif;font-size:10px}.chart-grid{stroke:#181818;stroke-width:1;fill:none}.capital-line{stroke:#c9d7b7;stroke-width:2;fill:none;stroke-linejoin:round;stroke-linecap:round}
 
 .settings-menu .setting{min-height:56px;font-size:14px;border-bottom:0}.settings-menu .setting .right{gap:8px;font-size:11px}.settings-divider{height:1px;background:#222;margin:9px 0}.settings-menu .currency-switch{gap:6px}.capital-chart h2{font-size:16px;margin:0 0 8px;color:#ddd}.capital-chart{padding-bottom:20px;border-bottom:1px solid #222;margin-bottom:22px}
+
+.account-options{padding:10px 0 18px;border-bottom:1px solid var(--line)}.account-toggle{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;font-size:14px}.account-toggle input{width:22px;height:22px;accent-color:#b5c99b;flex-shrink:0}.bank-accounts{padding-left:14px}.bank-accounts .title{font-size:14px}.account-title{overflow-wrap:anywhere}
+
+#bankSettings .small{font-size:12px;line-height:1.5}
