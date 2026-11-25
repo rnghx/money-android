@@ -41,7 +41,9 @@ final class AssetsController {
     private synchronized void startOkx(JSONObject credentials,boolean save) {
         if(okxBusy)return;okxBusy=true;okxError="";notifyUi();
         new Thread(()->{
-            try {JSONObject result=new OkxApi(credentials).balance();if(save)access.save(credentials);synchronized(this){okx=result;persist();}}
+            try {OkxApi api=new OkxApi(credentials);JSONObject result=api.balance();if(save)access.save(credentials);
+                try{result.put("trading",api.tradingHistory(okx,result));}catch(Exception historyError){result.put("tradingError",message(historyError));if(okx!=null&&result.optString("accountId").equals(okx.optString("accountId"))&&okx.has("trading"))result.put("trading",okx.get("trading"));}
+                synchronized(this){JSONObject prior=okx;okx=result;try{persist();}catch(Exception storageError){okx=prior;throw storageError;}}}
             catch(Exception e){okxError=message(e);}finally{okxBusy=false;notifyUi();}
         },"okx-read").start();
     }

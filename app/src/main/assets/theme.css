@@ -24,3 +24,5 @@ header h1{display:flex;align-items:center;gap:9px}.brand{width:30px;height:30px;
 #bankSettings .small{font-size:12px;line-height:1.5}
 
 button.capital-value{display:block;width:100%;padding:0;text-align:left;min-height:48px}.capital-extremes{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:24px 0 30px}.capital-extremes span{display:block;font-size:12px;color:#888;margin-bottom:10px}.capital-extremes strong{font-size:19px;font-weight:400;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}#capitalHistoryPanel .capital-chart{margin:0;padding:10px 0 24px}
+
+.okx-trading{border-bottom:1px solid var(--line);padding:14px 0 20px;margin-bottom:20px}.okx-trading h2{font-size:16px}.okx-trading .small{line-height:1.5;font-size:12px}.okx-result{margin-top:20px;font-size:13px}.okx-result-values{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:12px}.okx-result-values span{font-size:10px;color:#888}.okx-result-values strong{display:block;font-size:14px;font-weight:400;color:#ddd;margin-top:6px;overflow-wrap:anywhere}

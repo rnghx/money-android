@@ -42,7 +42,7 @@ function bankSettings(){let items='',warning='';try{const snap=M.bankCapital(ban
 function okxSettings(){
  const names={funding:'Основной',trading:'Торговый',earn:'Earn',classic:'Classic'};
  const details=Object.entries(assets.okx?.details||{}).map(([key,v])=>{const n=M.decimalMinor(v);return n===null?'':'<div class="setting"><span>'+esc(names[key]||key)+'</span><span>'+esc(shownAsset(v))+'</span></div>';}).join('');
- openSheet(sheethead('OKX')+'<div id="okxSettings">'+(assets.okxConnected?'<button class="primary" data-action="syncOkx" '+(assets.okxBusy?'disabled':'')+'>'+(assets.okxBusy?'Обновление…':'Обновить баланс')+'</button>':'<button class="primary" data-action="connectOkx">Подключить · Read only</button>')+details+(assets.okxConnected?'<button class="textbutton" data-action="disconnectOkx">Отключить OKX</button>':'')+(assets.okxError?'<div class="error">'+esc(assets.okxError)+'</div>':'')+'</div>');
+ openSheet(sheethead('OKX')+'<div id="okxSettings">'+(assets.okxConnected?'<button class="primary" data-action="syncOkx" '+(assets.okxBusy?'disabled':'')+'>'+(assets.okxBusy?'Загрузка…':'Обновить данные')+'</button>':'<button class="primary" data-action="connectOkx">Подключить · Read only</button>')+details+(assets.okx?.tradingError?'<p class="error">История: '+esc(assets.okx.tradingError)+'</p>':'')+(assets.okxConnected?'<button class="textbutton" data-action="disconnectOkx">Отключить OKX</button>':'')+(assets.okxError?'<div class="error">'+esc(assets.okxError)+'</div>':'')+'</div>');
 }
 
 function showToast(text){$('#toast').textContent=text;$('#toast').style.display='block';setTimeout(()=>$('#toast').style.display='none',3000);}

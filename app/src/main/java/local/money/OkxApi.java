@@ -13,20 +13,26 @@ import java.util.*;
 import java.math.BigDecimal;
 
 final class OkxApi {
+    static final long TRADING_START=java.time.LocalDate.of(2026,11,1).atStartOfDay(java.time.ZoneId.of("Europe/Moscow")).toInstant().toEpochMilli();
     static final Set<String> HOSTS=Set.of("openapi.okx.com","eea.okx.com","us.okx.com");
     static final Set<String> PATHS=Set.of("/api/v5/public/time","/api/v5/account/config","/api/v5/asset/asset-valuation?ccy=USD");
-    static boolean allowed(URL url) { return url.getProtocol().equals("https")&&HOSTS.contains(url.getHost())&&(url.getPort()==-1||url.getPort()==443)&&url.getUserInfo()==null&&url.getRef()==null&&PATHS.contains(url.getFile()); }
+    static boolean allowed(URL url) { return url.getProtocol().equals("https")&&HOSTS.contains(url.getHost())&&(url.getPort()==-1||url.getPort()==443)&&url.getUserInfo()==null&&url.getRef()==null&&allowedPath(url.getFile()); }
+    static boolean allowedPath(String path){return PATHS.contains(path)||path.matches("/api/v5/trade/fills-history\\?instType=(SWAP|FUTURES)&limit=100(?:&after=[0-9]{1,40})?")||path.matches("/api/v5/account/bills-archive\\?instType=(SWAP|FUTURES)&begin=[0-9]{1,16}&end=[0-9]{1,16}&limit=100(?:&after=[0-9]{1,40})?");}
     static String sign(String secret,String timestamp,String path) throws Exception {
-        if(!PATHS.contains(path))throw new IllegalArgumentException("Unsupported read endpoint");
+        if(!allowedPath(path))throw new IllegalArgumentException("Unsupported read endpoint");
         Mac mac=Mac.getInstance("HmacSHA256");mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8),"HmacSHA256"));
         return Base64.getEncoder().encodeToString(mac.doFinal((timestamp+"GET"+path).getBytes(StandardCharsets.UTF_8)));
     }
     static boolean readOnly(String permissions) { return permissions!=null&&Arrays.stream(permissions.split(",")).map(String::trim).filter(s->!s.isEmpty()).collect(java.util.stream.Collectors.toSet()).equals(Set.of("read_only")); }
+    interface Reader {JSONObject read(String path,boolean authenticated) throws Exception;}
     private final JSONObject credentials;
+    private final Reader reader;
     private long timeOffset;
-    OkxApi(JSONObject credentials){this.credentials=credentials;}
+    OkxApi(JSONObject credentials){this(credentials,null);}
+    OkxApi(JSONObject credentials,Reader reader){this.credentials=credentials;this.reader=reader;}
     private JSONObject get(String path,boolean authenticated) throws Exception {
         String host=credentials.getString("host");URL url=new URL("https://"+host+path);if(!allowed(url))throw new IOException("Неподдерживаемый адрес OKX");
+        if(reader!=null)return reader.read(path,authenticated);
         HttpsURLConnection c=(HttpsURLConnection)url.openConnection();
         try {
             c.setRequestMethod("GET");c.setInstanceFollowRedirects(false);c.setConnectTimeout(15000);c.setReadTimeout(25000);c.setRequestProperty("Accept","application/json");
@@ -49,6 +55,35 @@ final class OkxApi {
         BigDecimal usd=new BigDecimal(data.getString("totalBal"));if(usd.abs().compareTo(new BigDecimal("1000000000000"))>0)throw new IOException("Неизвестная сумма OKX");
         JSONObject result=new JSONObject();result.put("usd",usd.toPlainString());result.put("timestamp",Long.parseLong(data.getString("ts")));result.put("fetchedAt",System.currentTimeMillis());
         JSONObject parts=new JSONObject(),details=data.optJSONObject("details");if(details!=null)for(String name:new String[]{"funding","trading","earn","classic"})if(details.has(name))parts.put(name,new BigDecimal(details.getString(name)).toPlainString());
-        result.put("details",parts);return result;
+        result.put("details",parts);
+        String identity=credentials.getString("host")+":"+config.optString("uid",credentials.getString("apiKey"));byte[] hash=java.security.MessageDigest.getInstance("SHA-256").digest(identity.getBytes(StandardCharsets.UTF_8));StringBuilder accountId=new StringBuilder();for(byte b:hash)accountId.append(String.format(Locale.ROOT,"%02x",b));result.put("accountId",accountId.toString());return result;
     }
+    private JSONArray pages(String path,String[] fields,long since,long until) throws Exception {
+        JSONArray all=new JSONArray();Set<String> seen=new HashSet<>();String cursor="";
+        for(int page=0;page<2000;page++){
+            if(reader==null)Thread.sleep(450);JSONArray rows=get(path+(cursor.isEmpty()?"":"&after="+cursor),true).getJSONArray("data");
+            if(rows.length()==0)return all;
+            String last="";
+            for(int i=0;i<rows.length();i++){
+                JSONObject raw=rows.getJSONObject(i);String id=raw.getString("billId");if(!id.matches("[0-9]{1,40}")||!seen.add(id))throw new IOException("OKX: повтор страницы истории, расчёт не обновлён");
+                long ts=Long.parseLong(raw.getString("ts"));last=id;
+                if(ts<since||ts>until)continue;JSONObject row=new JSONObject();for(String field:fields)if(raw.has(field))row.put(field,raw.get(field));row.put("billId",id);all.put(row);
+            }
+
+            if(last.equals(cursor))throw new IOException("OKX: история не завершена");cursor=last;
+        }throw new IOException("OKX: слишком много страниц истории, расчёт не обновлён");
+    }
+    JSONObject tradingHistory(JSONObject previous,JSONObject balance) throws Exception {
+        long until=System.currentTimeMillis()+timeOffset,since=Math.max(TRADING_START,Instant.ofEpochMilli(until).atZone(java.time.ZoneId.of("Europe/Moscow")).toLocalDate().minusDays(89).atStartOfDay(java.time.ZoneId.of("Europe/Moscow")).toInstant().toEpochMilli());
+        JSONArray fills=new JSONArray();String[] fillFields={"billId","tradeId","instId","instType","ts","fillTime","fillPx","fillSz","side","fee","feeCcy","subType"};
+        for(String kind:new String[]{"SWAP","FUTURES"}){JSONArray list=pages("/api/v5/trade/fills-history?instType="+kind+"&limit=100",fillFields,since,until);for(int i=0;i<list.length();i++)fills.put(list.getJSONObject(i).put("instType",kind));}
+        JSONArray bills=new JSONArray();for(String kind:new String[]{"SWAP","FUTURES"}){JSONArray list=pages("/api/v5/account/bills-archive?instType="+kind+"&begin="+since+"&end="+until+"&limit=100",new String[]{"billId","tradeId","instId","instType","ts","ccy","type","subType","pnl","fee","balChg","posBalChg"},since,until);for(int i=0;i<list.length();i++)bills.put(list.getJSONObject(i).put("instType",kind));}
+        JSONObject old=previous!=null&&balance.getString("accountId").equals(previous.optString("accountId"))?previous.optJSONObject("trading"):null;
+        JSONObject history=new JSONObject();history.put("fills",mergeHistory(old==null?null:old.optJSONArray("fills"),fills));history.put("bills",mergeHistory(old==null?null:old.optJSONArray("bills"),bills));history.put("from",TRADING_START);history.put("until",until);
+        JSONArray ranges=old==null?new JSONArray():new JSONArray(old.optJSONArray("ranges")==null?"[]":old.getJSONArray("ranges").toString());ranges.put(new JSONObject().put("from",since).put("until",until));history.put("ranges",ranges);return history;
+    }
+    static JSONArray mergeHistory(JSONArray old,JSONArray fresh) throws Exception {
+        Map<String,JSONObject> rows=new LinkedHashMap<>();for(JSONArray list:new JSONArray[]{old,fresh})if(list!=null)for(int i=0;i<list.length();i++){JSONObject row=list.getJSONObject(i);String id=row.getString("billId");JSONObject prior=rows.get(id);if(prior!=null&&!prior.optString("instId").equals(row.optString("instId")))throw new IOException("OKX: неоднозначная история");rows.put(id,row);}return new JSONArray(rows.values());
+    }
+
 }
