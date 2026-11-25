@@ -16,3 +16,11 @@ assert.equal(O.summary({...fundingPos,bills:[{...funding,balChg:'',posBalChg:'-2
 assert.equal(O.summary({...fundingPos,bills:[{...funding,type:'10',balChg:'-5'}]},'2026-11').groups[0].net,O.decimal('-5'));
 
 assert.equal(O.text(O.decimal('-0.00000001')),'−0,00000001');assert.equal(O.text(O.decimal('0.000000000000000001')),'0,000000000000000001');
+
+assert.equal(r.records.reduce((sum,row)=>sum+row.value,0n),r.groups.reduce((sum,g)=>sum+g.net,0n));
+const explain={...history,fills:[],bills:[bill(100,'2026-11-05','2','7','-1'),{...bill(101,'2026-11-06','8'),balChg:'3'},bill(102,'2026-11-07','2','-4','0')]};
+const explained=O.summary(explain,'2026-11');const positive=O.select(explained,'USDT','positive');assert.equal(positive.reduce((sum,row)=>sum+row.value,0n),O.decimal('9'));assert.equal(explained.groups[0].net,O.decimal('5'));
+const report=O.report(explained,'USDT','positive');assert.match(report,/Сумма: 9 USDT/);assert.match(report,/billId: 100/);assert.match(report,/billId: 101/);assert.doesNotMatch(report,/billId: 102/);assert.match(report,/Финансирование/);assert.match(report,/P&L: 7; комиссия: −1/);assert.equal(O.select(explained,'BTC','positive').length,0);assert.equal(O.select(explained,'USDT','negative')[0].id,'102');
+assert.ok(!O.report(O.summary(history,'2026-11'),'USDT').includes('billId: 6\n'),'Report excludes pre-November records');
+
+const audit=O.summary(history,'2026-11');for(const g of audit.groups)assert.equal(audit.records.filter(r=>r.kind===g.kind&&r.ccy===g.ccy).reduce((sum,row)=>sum+row.value,0n),g.net);

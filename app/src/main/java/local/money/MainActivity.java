@@ -65,7 +65,11 @@ public class MainActivity extends Activity {
     @Override public void onBackPressed() { web.evaluateJavascript("window.goBack && goBack()",null); }
     private JSONObject bankStatus() {
         JSONObject out=new JSONObject();try {
-            JSONObject saved=secrets.load();out.put("configured",saved!=null);out.put("connected",saved!=null&&!saved.optString("guid").isEmpty());out.put("busy",syncing);out.put("error",syncError);out.put("historyError",historyError);out.put("stage",syncStage);out.put("lastSync",lastSync);out.put("month",lastMonth);String capital=getSharedPreferences("bank",0).getString("capital",null);if(capital!=null)out.put("capital",new JSONObject(capital));
+            out.put("busy",syncing);out.put("error",syncError);out.put("historyError",historyError);out.put("stage",syncStage);out.put("lastSync",lastSync);out.put("month",lastMonth);
+            String capital=getSharedPreferences("bank",0).getString("capital",null);
+            if(capital!=null)try{out.put("capital",new JSONObject(capital));}catch(JSONException invalidCache){out.put("error","Не удалось прочитать сохранённые остатки. Повторите обновление Сбера.");}
+            try{JSONObject saved=secrets.load();out.put("configured",saved!=null);out.put("connected",saved!=null&&!saved.optString("guid").isEmpty());}
+            catch(Exception accessError){out.put("configured",getSharedPreferences("bank",0).contains("access"));out.put("connected",false);out.put("error","Не удалось прочитать сохранённый доступ к Сберу. Подключите Сбер заново.");}
         }catch(Exception ignored){}return out;
     }
     private void publishStatus() { callback("directUpdate",bankStatus().toString()); }
@@ -142,6 +146,10 @@ public class MainActivity extends Activity {
             try { new JSONObject(json); return getSharedPreferences("money",0).edit().putString("state",json).commit(); }
             catch(Exception e) { return false; }
         }
+        @JavascriptInterface public boolean copyText(String text){
+            if(text==null||text.length()>100000)return false;
+            try{getSystemService(ClipboardManager.class).setPrimaryClip(ClipData.newPlainText("Отчёт OKX",text));return true;}catch(Exception e){return false;}
+        }
         @JavascriptInterface public String directStatus() { return bankStatus().toString(); }
         @JavascriptInterface public String assetsStatus() { return assets.status().toString(); }
         @JavascriptInterface public void connectOkx() { assets.connect(); }
@@ -149,7 +157,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void syncFx() { assets.refreshFx(); }
         @JavascriptInterface public void disconnectOkx() { assets.disconnect(); }
         @JavascriptInterface public void connectBank(String month) { runOnUiThread(()->connect(month)); }
-        @JavascriptInterface public void syncBank(String month) { try { JSONObject access=secrets.load();if(access!=null)startSync(month,access,false); }catch(Exception e){syncError="Подключи Сбер заново";publishStatus();} }
+        @JavascriptInterface public void syncBank(String month) { try { JSONObject access=secrets.load();if(access!=null)startSync(month,access,false);else{syncError="Подключите Сбер, чтобы обновить данные";publishStatus();} }catch(Exception e){syncError="Подключи Сбер заново";publishStatus();} }
         @JavascriptInterface public void disconnectBank() { runOnUiThread(()->{if(syncing)return;new DialogStyle.Builder(MainActivity.this).setTitle("Отключить Сбер?").setMessage("Удалить сохранённый доступ с этого телефона? Операции останутся.").setNegativeButton("Отмена",null).setPositiveButton("Отключить",(d,w)->{secrets.clear();getSharedPreferences("bank",0).edit().remove("capital").remove("lastSync").remove("lastMonth").apply();lastSync=0;lastMonth="";syncError="";historyError="";getSharedPreferences("bank",0).edit().remove("historyError").apply();publishStatus();}).show();}); }
         @JavascriptInterface public void exit() { runOnUiThread(()->finish()); }
     }
