@@ -17,7 +17,7 @@ public class MainActivity extends Activity {
     private AssetsController assets;
     private AppUpdates updates;
     private volatile boolean syncing=false;
-    private volatile String syncError="";
+    private volatile String syncError="",historyError="",syncStage="";
     private volatile long lastSync=0;
     private volatile String lastMonth="";
     @Override public void onCreate(Bundle state) {
@@ -26,6 +26,7 @@ public class MainActivity extends Activity {
         assets=new AssetsController(this,result->callback("assetsUpdate",result.toString()));
         lastSync=getSharedPreferences("bank",0).getLong("lastSync",0);
         lastMonth=getSharedPreferences("bank",0).getString("lastMonth","");
+        historyError=getSharedPreferences("bank",0).getString("historyError","");
         getWindow().setStatusBarColor(Color.BLACK); getWindow().setNavigationBarColor(Color.BLACK);
         web=new WebView(this); web.setBackgroundColor(Color.BLACK);
         content = new android.widget.FrameLayout(this);
@@ -64,7 +65,7 @@ public class MainActivity extends Activity {
     @Override public void onBackPressed() { web.evaluateJavascript("window.goBack && goBack()",null); }
     private JSONObject bankStatus() {
         JSONObject out=new JSONObject();try {
-            JSONObject saved=secrets.load();out.put("configured",saved!=null);out.put("connected",saved!=null&&!saved.optString("guid").isEmpty());out.put("busy",syncing);out.put("error",syncError);out.put("lastSync",lastSync);out.put("month",lastMonth);String capital=getSharedPreferences("bank",0).getString("capital",null);if(capital!=null)out.put("capital",new JSONObject(capital));
+            JSONObject saved=secrets.load();out.put("configured",saved!=null);out.put("connected",saved!=null&&!saved.optString("guid").isEmpty());out.put("busy",syncing);out.put("error",syncError);out.put("historyError",historyError);out.put("stage",syncStage);out.put("lastSync",lastSync);out.put("month",lastMonth);String capital=getSharedPreferences("bank",0).getString("capital",null);if(capital!=null)out.put("capital",new JSONObject(capital));
         }catch(Exception ignored){}return out;
     }
     private void publishStatus() { callback("directUpdate",bankStatus().toString()); }
@@ -98,23 +99,36 @@ public class MainActivity extends Activity {
         });
         if(!waiting.await(125,java.util.concurrent.TimeUnit.SECONDS))return null;return code[0];
     }
+    private String bankError(Exception e){
+        if(e instanceof javax.net.ssl.SSLException)return "Не удалось проверить защищённое соединение со Сбером";
+        if(e instanceof java.net.SocketTimeoutException)return "Сбер не ответил. Попробуй позднее.";
+        if(e instanceof java.net.UnknownHostException||e instanceof java.net.ConnectException)return "Нет соединения со Сбером";
+        String message=e instanceof IOException?e.getMessage():"Сбер изменил формат ответа";
+        return message==null?"Не удалось получить данные Сбера":message;
+    }
     private synchronized void startSync(String month,JSONObject access,boolean register) {
         if(syncing||!month.matches("\\d{4}-\\d{2}"))return;
-        syncing=true;syncError="";publishStatus();
+        syncing=true;syncError="";historyError="";syncStage="Подключение к Сберу…";publishStatus();
         new Thread(()->{
             try {
-                DirectSber bank=new DirectSber();bank.authenticate(access,register,this::confirmCode,secrets::save);JSONArray operations=bank.history(month,6);
+                DirectSber bank=new DirectSber();bank.authenticate(access,register,this::confirmCode,secrets::save);
+                syncStage="Сохранение остатков…";
                 long updatedAt=System.currentTimeMillis();
-                if(!getSharedPreferences("bank",0).edit().putLong("lastSync",updatedAt).putString("lastMonth",month).putString("capital",bank.capital().toString()).commit())throw new IOException("Не удалось сохранить остатки Сбера");
-                lastSync=updatedAt;lastMonth=month;syncing=false;
-                JSONObject result=bankStatus();result.put("operations",operations);result.put("snapshotMonth",month);JSONArray months=new JSONArray();for(int i=5;i>=0;i--)months.put(java.time.YearMonth.parse(month).minusMonths(i).toString());result.put("snapshotMonths",months);callback("directUpdate",result.toString());
+                if(!getSharedPreferences("bank",0).edit().putLong("lastSync",updatedAt).putString("capital",bank.capital().toString()).commit())throw new IOException("Не удалось сохранить остатки Сбера");
+                lastSync=updatedAt;syncStage="Загрузка операций…";publishStatus();
+                try {
+                    JSONArray operations=bank.history(month,6);
+                    if(!getSharedPreferences("bank",0).edit().putString("lastMonth",month).remove("historyError").commit())throw new IOException("Не удалось сохранить состояние загрузки операций");
+                    lastMonth=month;historyError="";syncing=false;syncStage="";
+                    JSONObject result=bankStatus();result.put("operations",operations);result.put("snapshotMonth",month);JSONArray months=new JSONArray();for(int i=5;i>=0;i--)months.put(java.time.YearMonth.parse(month).minusMonths(i).toString());result.put("snapshotMonths",months);callback("directUpdate",result.toString());
+                }catch(Exception operationError){
+                    historyError="Остатки обновлены. Операции не обновлены: "+bankError(operationError);
+                    getSharedPreferences("bank",0).edit().putString("historyError",historyError).apply();syncing=false;syncStage="";publishStatus();
+                }
             }catch(Exception e){
                 if(e instanceof DirectSber.RegistrationExpired){try{access.remove("guid");secrets.save(access);}catch(Exception ignored){}syncError="Регистрация Сбера отозвана. Подключи заново.";}
-                else if(e instanceof javax.net.ssl.SSLException)syncError="Не удалось проверить защищённое соединение со Сбером";
-                else if(e instanceof java.net.SocketTimeoutException)syncError="Сбер не ответил. Попробуй позднее.";
-                else if(e instanceof java.net.UnknownHostException||e instanceof java.net.ConnectException)syncError="Нет соединения со Сбером";
-                else syncError=e instanceof IOException?e.getMessage():"Сбер изменил формат ответа. Подключение не завершено.";
-                if(syncError==null)syncError="Не удалось подключиться к Сберу";syncing=false;publishStatus();
+                else syncError=bankError(e);
+                if(!syncStage.isEmpty())syncError=syncStage+" "+syncError;syncing=false;syncStage="";publishStatus();
             }
         },"sber-sync").start();
     }
@@ -136,7 +150,7 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void disconnectOkx() { assets.disconnect(); }
         @JavascriptInterface public void connectBank(String month) { runOnUiThread(()->connect(month)); }
         @JavascriptInterface public void syncBank(String month) { try { JSONObject access=secrets.load();if(access!=null)startSync(month,access,false); }catch(Exception e){syncError="Подключи Сбер заново";publishStatus();} }
-        @JavascriptInterface public void disconnectBank() { runOnUiThread(()->{if(syncing)return;new DialogStyle.Builder(MainActivity.this).setTitle("Отключить Сбер?").setMessage("Удалить сохранённый доступ с этого телефона? Операции останутся.").setNegativeButton("Отмена",null).setPositiveButton("Отключить",(d,w)->{secrets.clear();getSharedPreferences("bank",0).edit().remove("capital").remove("lastSync").remove("lastMonth").apply();lastSync=0;lastMonth="";syncError="";publishStatus();}).show();}); }
+        @JavascriptInterface public void disconnectBank() { runOnUiThread(()->{if(syncing)return;new DialogStyle.Builder(MainActivity.this).setTitle("Отключить Сбер?").setMessage("Удалить сохранённый доступ с этого телефона? Операции останутся.").setNegativeButton("Отмена",null).setPositiveButton("Отключить",(d,w)->{secrets.clear();getSharedPreferences("bank",0).edit().remove("capital").remove("lastSync").remove("lastMonth").apply();lastSync=0;lastMonth="";syncError="";historyError="";getSharedPreferences("bank",0).edit().remove("historyError").apply();publishStatus();}).show();}); }
         @JavascriptInterface public void exit() { runOnUiThread(()->finish()); }
     }
 }
