@@ -26,3 +26,8 @@ console.log('Portfolio checks passed: balances, aliases, debt, missing data, cur
 
 const unpriced={items:[{id:'broker',key:'broker',title:'Брокерский счёт',amount:null,currency:'RUB'}],unsupported:[],timestamp:1};
 assert.equal(M.bankCapital(unpriced).items.length,1);assert.equal(M.portfolio({connected:true,capital:unpriced},{},'RUB').amount,null);assert.equal(M.portfolio({connected:true,capital:unpriced},{},'RUB').complete,false);assert.equal(M.portfolio({connected:true,capital:unpriced},{},'RUB',{broker:{included:false}}).amount,0);
+const partial={items:[item('fresh','fresh','15'),{...item('cached','cached','20'),stale:true,observedAt:1}],unsupported:['CTACCOUNTS'],timestamp:20};
+p=M.portfolio({connected:true,capital:partial},{},'RUB');assert.equal(p.amount,3500);assert.equal(p.complete,false);assert.equal(p.stale,true);assert.equal(p.approx,true);
+const L=require('../app/src/main/assets/ledger.js'),history={capitalHistory:[],accountPreferences:{}};
+assert.equal(L.captureCapital(history,{connected:true,capital:partial},{},M),false);assert.deepEqual(history.capitalHistory,[],'Partial balances must not become a fresh capital observation');
+p=M.portfolio({connected:true,capital:{...partial,unsupported:[]}},{},'RUB',{cached:{included:false}});assert.equal(p.amount,1500);assert.equal(p.complete,true);assert.equal(p.stale,false);

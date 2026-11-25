@@ -52,12 +52,26 @@ public class SberCapitalTest {
         check(walletItem.getString("suffix").equals("1111"));check(walletItem.getString("amount").equals("2500"));
         Method hash=DirectSber.class.getDeclaredMethod("accountHash",String.class);hash.setAccessible(true);
         check(walletItem.getString("key").equals(hash.invoke(client,"12345678901234562222")));check(!walletItem.toString().contains("12345678901234562222"));
-        model.getJSONObject("CTACCOUNTS").put("state","ERROR");boolean failed=false;
-        try{method.invoke(new DirectSber(),model);}catch(InvocationTargetException expected){failed=expected.getCause() instanceof java.io.IOException;}check(failed);
+        model.getJSONObject("CTACCOUNTS").put("state","ERROR");JSONObject partial=(JSONObject)method.invoke(new DirectSber(),model);check(partial.getJSONArray("failedGroups").getString(0).equals("CTACCOUNTS"));check(partial.getJSONArray("items").length()==0);
+        model.put("ACCOUNTS",ordinary.getJSONObject("ACCOUNTS"));JSONObject mixed=(JSONObject)method.invoke(new DirectSber(),model);check(mixed.getJSONArray("items").length()==1);check(mixed.getJSONArray("items").getJSONObject(0).getString("amount").equals("1234.50"));check(mixed.getJSONArray("unsupported").getString(0).equals("CTACCOUNTS"));
+        JSONObject previous=new JSONObject("{\"timestamp\":100,\"items\":[{\"id\":\"a\",\"key\":\"ka\",\"group\":\"ACCOUNTS\",\"amount\":\"10\",\"currency\":\"RUB\"},{\"id\":\"b\",\"key\":\"kb\",\"group\":\"CTACCOUNTS\",\"amount\":\"20\",\"currency\":\"RUB\"}]}");
+        JSONObject fresh=new JSONObject("{\"timestamp\":200,\"items\":[{\"id\":\"a\",\"key\":\"ka\",\"group\":\"ACCOUNTS\",\"amount\":\"15\",\"currency\":\"RUB\"}],\"failedGroups\":[\"CTACCOUNTS\"],\"closed\":[]}");
+        JSONObject combined=DirectSber.mergeCapital(fresh,previous);check(combined.getJSONArray("items").length()==2);
+        check(combined.getJSONArray("items").getJSONObject(0).getString("amount").equals("15"));check(!combined.getJSONArray("items").getJSONObject(0).optBoolean("stale"));
+        JSONObject retained=combined.getJSONArray("items").getJSONObject(1);check(retained.getString("amount").equals("20"));check(retained.getBoolean("stale"));check(retained.getLong("observedAt")==100);
+        JSONObject repeated=DirectSber.mergeCapital(fresh,combined);check(repeated.getJSONArray("items").getJSONObject(1).getLong("observedAt")==100);
+        check(!previous.toString().contains("stale"));check(fresh.getJSONArray("items").length()==1);
+        fresh.put("closed",new JSONArray().put("b"));check(DirectSber.mergeCapital(fresh,previous).getJSONArray("items").length()==1);
+        fresh.put("closed",new JSONArray());fresh.put("failedGroups",new JSONArray());check(DirectSber.mergeCapital(fresh,previous).getJSONArray("items").length()==1);
+        previous.getJSONArray("items").getJSONObject(1).remove("group");fresh.put("failedGroups",new JSONArray().put("CTACCOUNTS"));check(DirectSber.mergeCapital(fresh,previous).getJSONArray("items").getJSONObject(1).getBoolean("stale"));
+        JSONObject cardPrevious=new JSONObject("{\"timestamp\":100,\"items\":[{\"id\":\"card\",\"key\":\"account-key\",\"previousKey\":\"product-key\",\"amount\":\"30\",\"currency\":\"RUB\"}]}");
+        JSONObject noDetails=new JSONObject("{\"timestamp\":200,\"items\":[{\"id\":\"card\",\"key\":\"product-key\",\"amount\":null,\"currency\":\"RUB\"}],\"failedGroups\":[\"CTACCOUNTS\"]}");
+        JSONObject cachedCard=DirectSber.mergeCapital(noDetails,cardPrevious).getJSONArray("items").getJSONObject(0);check(cachedCard.getString("key").equals("account-key"));check(cachedCard.getString("amount").equals("30"));check(cachedCard.getBoolean("stale"));
+        noDetails.getJSONArray("items").getJSONObject(0).put("key","account-key").put("amount","35");JSONObject recovered=DirectSber.mergeCapital(noDetails,new JSONObject().put("items",new JSONArray().put(cachedCard)));check(!recovered.getJSONArray("items").getJSONObject(0).optBoolean("stale"));check(recovered.getJSONArray("items").getJSONObject(0).getString("amount").equals("35"));
         JSONObject fixture=new JSONObject(Files.readString(Path.of("research/modern-fixtures_accounts.json")));
         JSONObject captured=(JSONObject)method.invoke(new DirectSber(),fixture);captured.put("timestamp",1);
         Files.createDirectories(Path.of(".test-classes"));Files.writeString(Path.of(".test-classes/capital-reference.json"),captured.toString());
         check(captured.getJSONArray("items").length()>0);
-        System.out.println("Sber capital extraction checks passed: credit liability, one account for multiple cards, protected identifiers, incomplete groups rejected, reference DTO.");
+        System.out.println("Sber capital checks passed: extraction, partial groups, stale cache, closed accounts, stable card keys and recovery.");
     }
 }

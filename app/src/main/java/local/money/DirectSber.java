@@ -130,6 +130,43 @@ final class DirectSber {
 
     }
     JSONObject capital(){return capital;}
+    JSONObject capital(JSONObject previous) throws Exception {
+        capital=mergeCapital(capital,previous);
+        JSONArray items=capital.getJSONArray("items");for(int i=0;i<items.length();i++){JSONObject item=items.getJSONObject(i);accountKeys.put(item.getString("id"),item.getString("key"));owned.add(item.getString("id"));}return capital;
+    }
+    private static void indexSnapshot(Map<String,JSONObject> index,JSONObject item) throws Exception {
+        for(String field:new String[]{"key","previousKey"})if(!item.optString(field).isEmpty())index.put(item.getString(field),item);
+        JSONArray keys=item.optJSONArray("previousKeys");if(keys!=null)for(int i=0;i<keys.length();i++)index.put(keys.getString(i),item);
+    }
+    static JSONObject mergeCapital(JSONObject fresh,JSONObject previous) throws Exception {
+        // Keep each cached balance's original observation time. A successful
+        // response for another group must never make that balance look fresh.
+        JSONObject result=new JSONObject(fresh.toString());if(previous==null||previous.optJSONArray("items")==null)return result;
+        Map<String,JSONObject> byKey=new HashMap<>(),byId=new HashMap<>();JSONArray old=previous.getJSONArray("items"),items=result.getJSONArray("items");
+        Set<String> found=new HashSet<>(),closed=new HashSet<>(),failed=new HashSet<>();
+        for(int i=0;i<old.length();i++){JSONObject item=old.getJSONObject(i);indexSnapshot(byKey,item);byId.put(item.getString("id"),item);}
+        for(String field:new String[]{"closed","failedGroups"}){JSONArray list=result.optJSONArray(field);if(list!=null)for(int i=0;i<list.length();i++)(field.equals("closed")?closed:failed).add(list.getString(i));}
+        for(int i=0;i<items.length();i++){
+            JSONObject item=items.getJSONObject(i),cached=byKey.get(item.getString("key"));
+            if(cached==null)cached=byKey.get(item.optString("previousKey"));if(cached==null)cached=byId.get(item.getString("id"));
+            if(cached!=null){found.add(cached.getString("key"));
+                if(item.isNull("amount")&&!cached.isNull("amount")){
+                    item.put("amount",new java.math.BigDecimal(cached.get("amount").toString()).toPlainString());item.put("currency",cached.getString("currency"));item.put("stale",true);item.put("observedAt",cached.optLong("observedAt",previous.optLong("timestamp")));
+                    if(!item.getString("key").equals(cached.getString("key"))){item.put("previousKey",item.getString("key"));item.put("key",cached.getString("key"));}
+                }
+                if(!item.getString("key").equals(cached.getString("key"))){JSONArray aliases=item.optJSONArray("previousKeys");if(aliases==null){aliases=new JSONArray();item.put("previousKeys",aliases);}aliases.put(cached.getString("key"));}
+            }
+        }
+        for(int i=0;i<old.length();i++){
+            JSONObject item=old.getJSONObject(i);String key=item.getString("key");if(found.contains(key)||closed.contains(key)||closed.contains(item.getString("id"))||failed.isEmpty())continue;
+            // Older snapshots have no group: retain conservatively during a
+            // partial failure, but let a complete response remove missing rows.
+            if(!item.optString("group").isEmpty()&&!failed.contains(item.getString("group")))continue;
+            JSONObject retained=new JSONObject(item.toString());retained.put("stale",true);retained.put("observedAt",item.optLong("observedAt",previous.optLong("timestamp")));items.put(retained);found.add(key);
+        }
+        return result;
+    }
+
     private JSONObject cardRequest(JSONObject card) throws JSONException {
         // Preserve the bank's JSON scalar type; converting a numeric id to a
         // string changes the cardInfo request contract.
@@ -191,36 +228,36 @@ final class DirectSber {
         }return result;
     }
     private JSONObject capitalSnapshot(JSONObject model) throws Exception {
-        JSONArray items=new JSONArray(),unsupported=new JSONArray();accountKeys.clear();
+        JSONArray items=new JSONArray(),unsupported=new JSONArray(),failedGroups=new JSONArray(),closed=new JSONArray();accountKeys.clear();
         for(String groupName:new String[]{"ACCOUNTS","SHARINGACCOUNTS","CTACCOUNTS","SHARINGCTACCOUNTS","IMACCOUNTS","ACCOUNTS_IN_WALLET"}){
             JSONObject group=model.optJSONObject(groupName);if(group==null)for(Iterator<String> keys=model.keys();keys.hasNext();){String name=keys.next();if(groupKey(name).equals(groupKey(groupName))){group=model.optJSONObject(name);break;}}if(group==null)continue;
-            if(!"SUCCESS".equals(group.optString("state"))||group.optJSONArray("errors")==null||group.getJSONArray("errors").length()!=0)throw new IOException("Сбер не вернул все остатки счетов");
+            if(!"SUCCESS".equals(group.optString("state"))||group.optJSONArray("errors")==null||group.getJSONArray("errors").length()!=0||group.optJSONArray("data")==null){failedGroups.put(groupName);unsupported.put(groupName);continue;}
             JSONArray accounts=group.getJSONArray("data");
             for(int i=0;i<accounts.length();i++){
                 JSONObject raw=accounts.getJSONObject(i);String state=raw.getString("state").toLowerCase(Locale.ROOT);
-                if(state.equals("closed"))continue;if(!state.equals("opened")&&!state.equals("active"))throw new IOException("Неизвестное состояние счёта Сбера");
+                if(state.equals("closed")){closed.put(raw.get("id").toString());if(!raw.optString("number").isEmpty())closed.put(accountHash(raw.getString("number")));continue;}if(!state.equals("opened")&&!state.equals("active"))throw new IOException("Неизвестное состояние счёта Сбера");
                 JSONObject balance=raw.getJSONObject("balance");String currency=balance.getJSONObject("currency").getString("code");
                 java.math.BigDecimal amount;
                 if(groupName.contains("CTACCOUNT")&&raw.optJSONObject("availableTotalLimit")!=null)amount=new java.math.BigDecimal(raw.getJSONObject("availableTotalLimit").get("amount").toString().replace(',','.')).subtract(new java.math.BigDecimal(raw.getJSONObject("creditLimit").get("amount").toString().replace(',','.')));
                 else amount=new java.math.BigDecimal((raw.optJSONObject("availCash")!=null?raw.getJSONObject("availCash"):balance).get("amount").toString().replace(',','.'));
                 String id=raw.get("id").toString(),number=raw.optString("number","");
-                JSONObject item=new JSONObject();item.put("id",id);item.put("key",number.isEmpty()?"id:"+id:accountHash(number));item.put("currency",currency);item.put("amount",amount.toPlainString());item.put("title",raw.optString("name","Счёт"));item.put("suffix",number.length()>=4?number.substring(number.length()-4):"");accountKeys.put(id,item.getString("key"));items.put(item);
+                JSONObject item=new JSONObject();item.put("id",id);item.put("group",groupName);item.put("key",number.isEmpty()?"id:"+id:accountHash(number));item.put("currency",currency);item.put("amount",amount.toPlainString());item.put("title",raw.optString("name","Счёт"));item.put("suffix",number.length()>=4?number.substring(number.length()-4):"");accountKeys.put(id,item.getString("key"));items.put(item);
                 JSONArray cards=raw.optJSONArray("cards");if(cards!=null)for(int n=0;n<cards.length();n++){JSONObject card=cards.optJSONObject(n);if(card!=null&&card.has("id")){String cardId=card.get("id").toString();owned.add(cardId);accountKeys.put(cardId,item.getString("key"));}}
             }
         }
         JSONObject digital=model.optJSONObject("DIGITALRUBLE");if(digital!=null){
-            if(!"SUCCESS".equals(digital.optString("state"))||digital.getJSONArray("errors").length()!=0)throw new IOException("Сбер не вернул остаток цифрового рубля");
-            JSONArray wallets=digital.getJSONArray("data");for(int i=0;i<wallets.length();i++){
+            boolean digitalReady="SUCCESS".equals(digital.optString("state"))&&digital.optJSONArray("errors")!=null&&digital.getJSONArray("errors").length()==0&&digital.optJSONArray("data")!=null;if(!digitalReady){failedGroups.put("DIGITALRUBLE");unsupported.put("DIGITALRUBLE");}
+            JSONArray wallets=digitalReady?digital.getJSONArray("data"):new JSONArray();for(int i=0;i<wallets.length();i++){
                 JSONObject raw=wallets.getJSONObject(i);if(!"ACTIVE".equals(raw.getJSONObject("walletStatus").optString("code")))continue;
                 JSONObject b=raw.getJSONObject("balance");java.math.BigDecimal amount=new java.math.BigDecimal(b.get("totalAmount").toString()).subtract(new java.math.BigDecimal(b.get("totalBlockedAmount").toString()));
-                String key="digital:"+accountHash(raw.getString("digitalRubleAccountNumber"));JSONObject item=new JSONObject();item.put("id",key);item.put("key",key);item.put("currency","RUB");item.put("amount",amount.toPlainString());item.put("title","Цифровой рубль");items.put(item);accountKeys.put(raw.get("id").toString(),key);
+                String key="digital:"+accountHash(raw.getString("digitalRubleAccountNumber"));JSONObject item=new JSONObject();item.put("id",key);item.put("group","DIGITALRUBLE");item.put("key",key);item.put("currency","RUB");item.put("amount",amount.toPlainString());item.put("title","Цифровой рубль");items.put(item);accountKeys.put(raw.get("id").toString(),key);
             }
         }
         for(String name:new String[]{"DEPOSITS","LOANS","CREDITS"}){JSONObject block=model.optJSONObject(name);if(block!=null&&block.optJSONArray("data")!=null&&block.getJSONArray("data").length()>0)unsupported.put(name);}
         JSONArray diagnostics=new JSONArray();
         for(Iterator<String> keys=model.keys();keys.hasNext();){
             String name=keys.next();JSONObject group=model.optJSONObject(name);if(group==null||group.optJSONArray("data")==null)continue;
-            String kind=groupKey(name);JSONArray data=group.getJSONArray("data");JSONObject diagnostic=new JSONObject();diagnostic.put("group",name.replaceAll("[^A-Za-z0-9_]", "").substring(0,Math.min(64,name.replaceAll("[^A-Za-z0-9_]", "").length())));diagnostic.put("count",data.length());diagnostics.put(diagnostic);
+            String kind=groupKey(name);JSONArray data=group.getJSONArray("data");JSONObject diagnostic=new JSONObject();diagnostic.put("group",name.replaceAll("[^A-Za-z0-9_]", "").substring(0,Math.min(64,name.replaceAll("[^A-Za-z0-9_]", "").length())));diagnostic.put("count",data.length());diagnostic.put("state","SUCCESS".equals(group.optString("state"))?"SUCCESS":"FAILED");diagnostic.put("errors",group.optJSONArray("errors")==null?-1:group.getJSONArray("errors").length());diagnostics.put(diagnostic);
             if(!kind.matches(".*(BROKER|INVEST|PAYMENT|CURRENT|CARDSINWALLET).*"))continue;
             for(int i=0;i<data.length();i++){
                 JSONObject raw=data.optJSONObject(i);if(raw==null||!raw.has("id")||"closed".equalsIgnoreCase(raw.optString("state")))continue;
@@ -232,7 +269,7 @@ final class DirectSber {
                 String key=number.matches("[0-9]{20}")?accountHash(number):previousKey;
                 JSONObject existing=null;for(int n=0;n<items.length();n++)if(key.equals(items.getJSONObject(n).optString("key"))){existing=items.getJSONObject(n);break;}
                 if(existing!=null){JSONArray aliases=existing.optJSONArray("previousKeys");if(aliases==null){aliases=new JSONArray();existing.put("previousKeys",aliases);}aliases.put(previousKey);accountKeys.put(id,key);continue;}
-                JSONObject item=new JSONObject();item.put("id",id);item.put("key",key);item.put("previousKey",previousKey);item.put("title",raw.optString("name",investment?"Брокерский счёт":"Платёжный счёт"));String shownNumber=displayNumber.isEmpty()?number:displayNumber;item.put("suffix",shownNumber.length()>=4?shownNumber.substring(shownNumber.length()-4):"");
+                JSONObject item=new JSONObject();item.put("id",id);item.put("group",kind);item.put("key",key);item.put("previousKey",previousKey);item.put("title",raw.optString("name",investment?"Брокерский счёт":"Платёжный счёт"));String shownNumber=displayNumber.isEmpty()?number:displayNumber;item.put("suffix",shownNumber.length()>=4?shownNumber.substring(shownNumber.length()-4):"");
                 JSONObject funds=kind.contains("CARDSINWALLET")?cardFunds(raw):null;
                 // A card available limit can include borrowed money: never count it as capital.
                 if(!investment&&"SUCCESS".equalsIgnoreCase(group.optString("state"))&&group.optJSONArray("errors")!=null&&group.getJSONArray("errors").length()==0&&balance!=null&&balance.optJSONObject("currency")!=null&&balance.has("amount")&&!kind.contains("CARDSINWALLET")){
@@ -241,7 +278,7 @@ final class DirectSber {
                 items.put(item);accountKeys.put(id,key);
             }
         }
-        JSONObject snapshot=new JSONObject();snapshot.put("diagnostics",diagnostics);snapshot.put("items",items);snapshot.put("unsupported",unsupported);snapshot.put("timestamp",System.currentTimeMillis());return snapshot;
+        JSONObject snapshot=new JSONObject();snapshot.put("failedGroups",failedGroups);snapshot.put("closed",closed);snapshot.put("diagnostics",diagnostics);snapshot.put("items",items);snapshot.put("unsupported",unsupported);snapshot.put("timestamp",System.currentTimeMillis());return snapshot;
     }
     private String accountHash(String number) throws Exception {byte[] bytes=java.security.MessageDigest.getInstance("SHA-256").digest(number.getBytes(StandardCharsets.UTF_8));StringBuilder s=new StringBuilder();for(byte b:bytes)s.append(String.format(Locale.ROOT,"%02x",b));return s.toString();}
     private String resourceKey(JSONObject resource) {

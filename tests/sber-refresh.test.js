@@ -14,3 +14,6 @@ console.log('Sber independent refresh passed: fresh balances during history fail
 
 vm.runInContext("month='2026-01';actions.sync()",c);assert.equal(calls.at(-1),new Date(Date.now()+10800000).toISOString().slice(0,7),'Refreshing Sber must request current Moscow month rather than analytics filter');
 vm.runInContext('actions.sberDiagnostics()',c);assert.match(elements.sheetContent.innerHTML,/Месяц запроса/);assert.doesNotMatch(elements.sheetContent.innerHTML,/Сохранить|Правка|300 ₽/);
+failSave=false;c.result={connected:true,busy:false,error:'',capital:{timestamp:Date.now(),failedGroups:['CTACCOUNTS'],unsupported:['CTACCOUNTS'],items:[{id:'fresh',key:'fresh',amount:'15',currency:'RUB',title:'Новый'},{id:'cached',key:'cached',amount:'20',currency:'RUB',title:'Сохранённый',stale:true,observedAt:1}]}};
+vm.runInContext('directUpdate(result);actions.bankAccounts()',c);assert.match(elements.sheetContent.innerHTML,/Устаревший остаток/);assert.match(elements.sheetContent.innerHTML,/Часть счетов не обновилась/);assert.match(elements.sheetContent.innerHTML,/15 ₽/);
+vm.runInContext('actions.sberDiagnostics()',c);assert.match(elements.sheetContent.innerHTML,/Недоступные группы: CTACCOUNTS/);assert.doesNotMatch(elements.sheetContent.innerHTML,/15 ₽|20 ₽|Сохранённый/);

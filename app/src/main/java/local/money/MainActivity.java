@@ -116,6 +116,8 @@ public class MainActivity extends Activity {
         new Thread(()->{
             try {
                 DirectSber bank=new DirectSber();bank.authenticate(access,register,this::confirmCode,secrets::save);
+                JSONObject previous=null;try{String cached=getSharedPreferences("bank",0).getString("capital",null);if(cached!=null)previous=new JSONObject(cached);}catch(JSONException ignored){}
+                bank.capital(previous);
                 syncStage="Сохранение остатков…";
                 long updatedAt=System.currentTimeMillis();
                 if(!getSharedPreferences("bank",0).edit().putLong("lastSync",updatedAt).putString("capital",bank.capital().toString()).commit())throw new IOException("Не удалось сохранить остатки Сбера");
