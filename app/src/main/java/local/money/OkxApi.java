@@ -13,7 +13,7 @@ import java.util.*;
 import java.math.BigDecimal;
 
 final class OkxApi {
-    static final long TRADING_START=java.time.LocalDate.of(2026,11,1).atStartOfDay(java.time.ZoneId.of("Europe/Moscow")).toInstant().toEpochMilli();
+    static final long TRADING_START=java.time.LocalDate.of(2026,11,26).atStartOfDay(java.time.ZoneId.of("Europe/Moscow")).toInstant().toEpochMilli();
     static final Set<String> HOSTS=Set.of("openapi.okx.com","eea.okx.com","us.okx.com");
     static final Set<String> PATHS=Set.of("/api/v5/public/time","/api/v5/account/config","/api/v5/asset/asset-valuation?ccy=USD");
     static boolean allowed(URL url) { return url.getProtocol().equals("https")&&HOSTS.contains(url.getHost())&&(url.getPort()==-1||url.getPort()==443)&&url.getUserInfo()==null&&url.getRef()==null&&allowedPath(url.getFile()); }

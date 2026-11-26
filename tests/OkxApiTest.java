@@ -22,7 +22,7 @@ public class OkxApiTest {
         check(OkxApi.allowed(new URL("https://openapi.okx.com/api/v5/account/bills-archive?instType=FUTURES&begin=1&end=100&limit=100")));
         check(!OkxApi.allowedPath("/api/v5/trade/fills-history?instType=SWAP&limit=100&after=123&other=1"));
         check(!OkxApi.allowedPath("/api/v5/trade/fills-history?instType=SPOT&limit=100"));
-        check(OkxApi.TRADING_START==java.time.Instant.parse("2026-10-31T21:00:00Z").toEpochMilli());
+        check(OkxApi.TRADING_START==java.time.Instant.parse("2026-11-25T21:00:00Z").toEpochMilli());
         final int[] page={0};OkxApi fixture=new OkxApi(new JSONObject("{\"host\":\"openapi.okx.com\"}"),(path,auth)->{check(auth);JSONArray data=new JSONArray();int first=page[0]++*100;for(int i=first;i<Math.min(250,first+100);i++)data.put(new JSONObject().put("billId",String.valueOf(i+1)).put("ts",String.valueOf(1000+i)).put("instId","BTC-USDT"));return new JSONObject().put("data",data);});
         Method pages=OkxApi.class.getDeclaredMethod("pages",String.class,String[].class,long.class,long.class);pages.setAccessible(true);
         JSONArray all=(JSONArray)pages.invoke(fixture,"/api/v5/trade/fills-history?instType=SWAP&limit=100",new String[]{"billId","ts","instId"},1L,9999L);check(all.length()==250);check(page[0]==4);
