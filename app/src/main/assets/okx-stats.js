@@ -1,6 +1,6 @@
 (function(root){
 'use strict';
-const S=10n**18n,START=Date.parse('2026-11-26T00:00:00+03:00');
+const S=10n**18n,START=Date.parse('2026-11-27T00:00:00+03:00');
 function decimal(v){const m=String(v??'').match(/^(-?)(\d{1,30})(?:\.(\d{1,18}))?$/);if(!m)throw Error('Неизвестная сумма OKX');return (BigInt(m[2])*S+BigInt((m[3]||'').padEnd(18,'0')))*(m[1]?-1n:1n);}
 function text(n){const sign=n<0n?'−':'';n=n<0n?-n:n;const fraction=(n%S).toString().padStart(18,'0').replace(/0+$/,'');return sign+(n/S).toString().replace(/\B(?=(\d{3})+(?!\d))/g,' ')+(fraction?','+fraction:'');}
 function month(ts){const n=Number(ts);if(!Number.isSafeInteger(n)||n<0)throw Error('Неизвестная дата OKX');return new Date(n+10800000).toISOString().slice(0,7);}
